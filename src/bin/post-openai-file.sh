@@ -32,7 +32,6 @@ Exit codes:
   66   Input file missing or unreadable.
   69   Upload failed or API unavailable.
   78   Missing API key.
-  127  Required command unavailable.
 
 Example:
   $SCRIPT_NAME image.png > upload.json
@@ -50,18 +49,6 @@ error() {
   exit "$code"
 }
 
-need_commands() {
-  local cmd
-  local -a missing_commands=()
-
-  for cmd in "$@"; do
-    command -v "$cmd" >/dev/null 2>&1 || missing_commands+=("$cmd")
-  done
-
-  ((${#missing_commands[@]} == 0)) \
-    || error 127 "Missing commands: ${missing_commands[*]}"
-}
-
 main() {
   if [[ "${1:-}" == '-h' || "${1:-}" == '--help' ]]; then
     (($# == 1)) || error 2 'Help accepts no additional arguments'
@@ -72,8 +59,6 @@ main() {
   (($# == 1)) || error 2 'Expected exactly one file path'
   [[ -n "$OPENAI_API_KEY" ]] || error 78 'OPENAI_API_KEY is required'
   [[ -f "$1" && -r "$1" ]] || error 66 "File missing or unreadable: $1"
-  need_commands curl jq mktemp rm
-
   local response http_code
   response="$(mktemp)" || error 73 'Cannot create temporary file'
   trap "rm -f -- '$response'" EXIT

@@ -16,8 +16,6 @@ main() {
 
   [[ $# -eq 1 ]] || error 2 "Expected query parameters"
   [[ -n "$MAX_BOT_TOKEN" ]] || error 78 "MAX_BOT_TOKEN is required"
-  need_commands curl jq mktemp
-
   local query="$1"
   local recipient_pattern='(^|&)(user_id|chat_id)=-?[0-9]+(&|$)'
   [[ "$query" =~ $recipient_pattern ]] || error 2 "Expected user_id=<id> or chat_id=<id>"
@@ -101,7 +99,6 @@ Exit codes:
   73   Cannot create temporary file.
   75   Temporary HTTP failure or timeout (retry may duplicate a message).
   78   Missing/invalid token.
-  127  Required command is missing.
 EOF_USAGE
 }
 
@@ -123,15 +120,6 @@ error() {
   shift
   log "[ERROR] $*"
   exit "$code"
-}
-
-need_commands() {
-  local cmd
-  local -a missing_commands=()
-  for cmd in "$@"; do
-    command -v "$cmd" &>/dev/null || missing_commands+=("$cmd")
-  done
-  ((${#missing_commands[@]} == 0)) || error 127 "Missing commands: ${missing_commands[*]}"
 }
 
 # endregion

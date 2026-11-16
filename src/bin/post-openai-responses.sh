@@ -16,8 +16,6 @@ main() {
 
   [[ $# -eq 0 ]] || error 2 "Unexpected arguments"
   [[ -n "$OPENAI_API_KEY" ]] || error 78 "OPENAI_API_KEY is required"
-  need_commands curl jq mktemp
-
   local request
   request="$(cat)"
   [[ -n "${request//[[:space:]]/}" ]] || error 66 "Request is empty"
@@ -74,7 +72,6 @@ Exit codes:
   66   Empty input.
   73   Cannot create temporary file.
   78   Missing API key.
-  127  Required command unavailable.
 
   13   API request or response failed (possibly billed).
 EOF_USAGE
@@ -100,18 +97,6 @@ error() {
   shift
   log "[ERROR] $*"
   exit "$code"
-}
-
-need_commands() {
-  local cmd
-  local -a missing_commands=()
-
-  for cmd in "$@"; do
-    command -v "$cmd" &>/dev/null || missing_commands+=("$cmd")
-  done
-
-  ((${#missing_commands[@]} == 0)) \
-    || error 127 "Missing commands: ${missing_commands[*]}"
 }
 
 # endregion

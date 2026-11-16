@@ -15,6 +15,7 @@ STDERR_FILE=""
 STATUS=0
 
 main() {
+  # Test helpers plus external commands required by the script under test.
   need_commands mktemp grep cmp curl jq
   resolve_script
   TMP_DIR="$(mktemp -d)"

@@ -20,8 +20,6 @@ main() {
   [[ "$MAX_POLL_TIMEOUT" =~ ^([0-9]|[1-8][0-9]|90)$ ]] \
     || error 78 "MAX_POLL_TIMEOUT must be an integer from 0 to 90"
 
-  need_commands curl jq
-
   local marker="${1:-}"
   [[ -z "$marker" || "$marker" =~ ^[0-9]+$ ]] \
     || error 2 "Marker must be a non-negative integer"
@@ -72,7 +70,6 @@ Exit codes:
   69   Network or HTTP error.
   70   Invalid API response.
   78   Configuration error.
-  127  Required command is unavailable.
 
 Example:
   $SCRIPT_NAME
@@ -101,16 +98,6 @@ error() {
   shift
   log "[ERROR] $*"
   exit "$code"
-}
-
-need_commands() {
-  local cmd
-  local -a missing_commands=()
-  for cmd in "$@"; do
-    command -v "$cmd" &>/dev/null || missing_commands+=("$cmd")
-  done
-  ((${#missing_commands[@]} == 0)) \
-    || error 127 "Missing commands: ${missing_commands[*]}"
 }
 
 # endregion

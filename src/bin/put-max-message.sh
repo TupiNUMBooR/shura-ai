@@ -16,8 +16,6 @@ main() {
 
   [[ $# -eq 1 ]] || error 2 "Expected message mid"
   [[ -n "$MAX_BOT_TOKEN" ]] || error 78 "MAX_BOT_TOKEN is required"
-  need_commands curl jq mktemp
-
   local mid="$1"
   [[ "$mid" =~ ^[a-zA-Z0-9_.-]+$ ]] || error 2 "Invalid message mid"
 
@@ -97,7 +95,6 @@ Exit codes:
   73   Cannot create temporary file.
   75   Temporary HTTP failure or timeout.
   78   Missing/invalid token.
-  127  Required command is missing.
 EOF_USAGE
 }
 
@@ -119,15 +116,6 @@ error() {
   shift
   log "[ERROR] $*"
   exit "$code"
-}
-
-need_commands() {
-  local cmd
-  local -a missing_commands=()
-  for cmd in "$@"; do
-    command -v "$cmd" &>/dev/null || missing_commands+=("$cmd")
-  done
-  ((${#missing_commands[@]} == 0)) || error 127 "Missing commands: ${missing_commands[*]}"
 }
 
 # endregion
