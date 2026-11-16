@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-post-openai-responses.sh
+# test-post-responses.sh
 set -Eeuo pipefail
 
 TEST_NAME="$(basename "$0")"

@@ -1,5 +1,6 @@
 # compose.yml
 services:
+
   ms-max:
     build: ./ms-max
     image: shura-ms-max:local
@@ -7,4 +8,13 @@ services:
       - .env
     volumes:
       - ./db/max:/db
+    restart: unless-stopped
+
+  ms-openai:
+    build: ./ms-openai
+    image: shura-ms-openai:local
+    env_file:
+      - .env
+    volumes:
+      - ./db:/db
     restart: unless-stopped

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-post-openai-file.sh - Minimal tests for OpenAI file upload.
+# test-post-file.sh - Minimal tests for OpenAI file upload.
 set -euo pipefail
 
 TEST_NAME="$(basename "$0")"

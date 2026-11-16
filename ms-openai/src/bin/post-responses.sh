@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# post-openai-responses.sh
+# post-responses.sh
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"

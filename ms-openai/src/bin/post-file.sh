@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# post-openai-file.sh - Upload a vision file to OpenAI and print its JSON response.
+# post-file.sh - Upload a vision file to OpenAI and print its JSON response.
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"

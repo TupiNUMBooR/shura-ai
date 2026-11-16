@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# transcribe-openai.sh
+# transcribe.sh
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
