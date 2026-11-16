@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-put-max-message.sh
+# test-post-message.sh
 set -Eeuo pipefail
 
 TEST_NAME="$(basename "$0")"
@@ -29,15 +29,15 @@ main() {
   run_test "help works without environment" test_help
   run_test "rejects missing arguments" test_missing_arguments
   run_test "requires MAX_BOT_TOKEN" test_requires_token
-  run_test "rejects invalid message ID" test_invalid_message_id
+  run_test "requires a recipient query parameter" test_requires_recipient
   run_test "rejects empty and long text" test_invalid_text
-  run_test "updates message and sends correct request" test_success
+  run_test "posts message and prints its mid" test_success
   run_test "reports curl failure" test_curl_failure
   run_test "reports request timeout" test_timeout
   run_test "reports unauthorized response" test_unauthorized
   run_test "reports retryable HTTP response" test_retryable_http
   run_test "reports non-retryable HTTP response" test_non_retryable_http
-  run_test "rejects unsuccessful edit response" test_unsuccessful_response
+  run_test "rejects response without message mid" test_missing_mid
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))
@@ -58,54 +58,54 @@ test_missing_arguments() {
   run env MAX_BOT_TOKEN=test "$SCRIPT_UNDER_TEST"
 
   assert_status 2
-  assert_stderr_contains "Expected message mid"
+  assert_stderr_contains "Expected query parameters"
 }
 
 test_requires_token() {
-  run env -u MAX_BOT_TOKEN "$SCRIPT_UNDER_TEST" "mid.123"
+  run env -u MAX_BOT_TOKEN "$SCRIPT_UNDER_TEST" "chat_id=123"
 
   assert_status 78
   assert_stderr_contains "MAX_BOT_TOKEN is required"
 }
 
-test_invalid_message_id() {
-  run env MAX_BOT_TOKEN=test "$SCRIPT_UNDER_TEST" "mid/123"
+test_requires_recipient() {
+  run env MAX_BOT_TOKEN=test "$SCRIPT_UNDER_TEST" "limit=10"
 
   assert_status 2
-  assert_stderr_contains "Invalid message mid"
+  assert_stderr_contains "Expected user_id=<id> or chat_id=<id>"
 }
 
 test_invalid_text() {
-  run run_api "mid.123" </dev/null
+  run run_api "chat_id=123" </dev/null
 
   assert_status 65
   assert_stderr_contains "Invalid message text"
 
-  run run_api "mid.123" <"$TMP_DIR/long-text"
+  run run_api "chat_id=123" <"$TMP_DIR/long-text"
 
   assert_status 65
   assert_stderr_contains "Invalid message text"
 }
 
 test_success() {
-  setup_curl '{"success":true}'
+  setup_curl '{"message":{"body":{"mid":"mid-456"}}}'
   TEST_MAX_API_URL="https://max.example/v1/"
-  run run_api "mid.abc_123" <<<"Updated text"
+  run run_api "chat_id=123&disable_link_preview=true" <<<"Hello MAX"
 
   assert_status 0
-  assert_stdout_empty
+  assert_stdout_equals "mid-456"
   assert_stderr_empty
   assert_curl_arg "--request"
-  assert_curl_arg "PUT"
+  assert_curl_arg "POST"
   assert_curl_arg "Authorization: test-token"
   assert_curl_arg "Content-Type: application/json"
-  assert_curl_arg "https://max.example/v1/messages?message_id=mid.abc_123"
-  assert_curl_body_equals_text "Updated text"
+  assert_curl_arg "https://max.example/v1/messages?chat_id=123&disable_link_preview=true"
+  assert_curl_body_equals_text "Hello MAX"
 }
 
 test_curl_failure() {
   setup_curl '{"error":"network down"}' 7 000
-  run run_api "mid.123" <<<"Updated text"
+  run run_api "user_id=123" <<<"Hello MAX"
 
   assert_status 69
   assert_stderr_contains "MAX request failed (curl exit 7)"
@@ -114,7 +114,7 @@ test_curl_failure() {
 
 test_timeout() {
   setup_curl '{"error":"timeout"}' 28 000
-  run run_api "mid.123" <<<"Updated text"
+  run run_api "user_id=123" <<<"Hello MAX"
 
   assert_status 75
   assert_stderr_contains "MAX request timed out"
@@ -123,7 +123,7 @@ test_timeout() {
 
 test_unauthorized() {
   setup_curl '{"error":"unauthorized"}' 0 401
-  run run_api "mid.123" <<<"Updated text"
+  run run_api "user_id=123" <<<"Hello MAX"
 
   assert_status 78
   assert_stderr_contains "MAX HTTP 401"
@@ -132,7 +132,7 @@ test_unauthorized() {
 
 test_retryable_http() {
   setup_curl '{"error":"busy"}' 0 429
-  run run_api "mid.123" <<<"Updated text"
+  run run_api "user_id=123" <<<"Hello MAX"
 
   assert_status 75
   assert_stderr_contains "MAX HTTP 429"
@@ -141,19 +141,19 @@ test_retryable_http() {
 
 test_non_retryable_http() {
   setup_curl '{"error":"bad request"}' 0 400
-  run run_api "mid.123" <<<"Updated text"
+  run run_api "user_id=123" <<<"Hello MAX"
 
   assert_status 65
   assert_stderr_contains "MAX HTTP 400"
   assert_stdout_empty
 }
 
-test_unsuccessful_response() {
-  setup_curl '{"success":false,"code":"NOT_FOUND","message":"Message not found"}' 0 200
-  run run_api "mid.123" <<<"Updated text"
+test_missing_mid() {
+  setup_curl '{"message":{"body":{}}}' 0 200
+  run run_api "user_id=123" <<<"Hello MAX"
 
   assert_status 65
-  assert_stderr_contains "MAX edit failed"
+  assert_stderr_contains "MAX returned no message.body.mid"
   assert_stdout_empty
 }
 
@@ -286,6 +286,13 @@ assert_status() {
 
   [[ "$STATUS" -eq "$expected" ]] \
     || fail "expected exit $expected, got $STATUS\nstderr:\n$(cat "$STDERR_FILE")"
+}
+
+assert_stdout_equals() {
+  local expected="$1"
+
+  printf '%s\n' "$expected" | cmp -s - "$STDOUT_FILE" \
+    || fail "stdout mismatch\nexpected: $expected\nactual:   $(cat "$STDOUT_FILE")"
 }
 
 assert_stdout_empty() {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# poll-max.sh
+# poll.sh
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"

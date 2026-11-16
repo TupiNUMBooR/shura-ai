@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# post-max-message.sh
+# post-message.sh
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"

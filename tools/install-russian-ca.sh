@@ -5,7 +5,7 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-CERT_DIR="$ROOT_DIR/certs"
+CERT_DIR="$ROOT_DIR/ms-max/certs"
 BASE_URL='https://gu-st.ru/content/lending'
 
 for cmd in curl openssl mktemp; do
