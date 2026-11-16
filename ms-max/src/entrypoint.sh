@@ -24,8 +24,8 @@ worker() {
 worker "$SCRIPT_DIR/bin/process-inbox.sh" &
 pids+=("$!")
 
-# worker "$SCRIPT_DIR/bin/process-outbox.sh" &
-# pids+=("$!")
+worker "$SCRIPT_DIR/bin/process-outbox.sh" &
+pids+=("$!")
 
 wait -n "${pids[@]}" || :
 exit 1

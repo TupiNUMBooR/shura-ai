@@ -19,11 +19,16 @@ main() {
   trap '[[ -z "$tmp" ]] || rm -f "$tmp"' EXIT
 
   local marker="" response new_marker updates update
-  local user seq inbox attachment type url ext mime n filename
+  local user seq inbox attachment type url ext mime n filename message_count
 
   [[ ! -f "$MARKER_FILE" ]] || marker=$(<"$MARKER_FILE")
   response=$("$POLL_MAX" ${marker:+"$marker"})
   new_marker=$(jq -r '.marker // empty' <<<"$response")
+  message_count=$(jq '[.updates[] | select(.update_type == "message_created")] | length' <<<"$response")
+  if ((message_count > 0)); then
+    printf '[%s] [%s] Received %s messages\n' \
+      "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$SCRIPT_NAME" "$message_count" >&2
+  fi
 
   updates=$(jq -c '
     [.updates[]
