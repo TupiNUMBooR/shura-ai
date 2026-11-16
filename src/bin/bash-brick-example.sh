@@ -16,9 +16,6 @@ main() {
   [[ $# -eq 1 ]] || error 2 "Expected message"
   [[ -n "$EXAMPLE_VALUE" ]] || error 78 "EXAMPLE_VALUE is required"
 
-  # Demonstrate dependency checking; echo is a Bash builtin.
-  need_commands echo
-
   local message="$1"
 
   if [[ -z "${message//[[:space:]]/}" ]]; then
@@ -103,18 +100,6 @@ error() {
 
   log "[ERROR] $*"
   exit "$code"
-}
-
-need_commands() {
-  local cmd
-  local -a missing_commands=()
-
-  for cmd in "$@"; do
-    command -v "$cmd" &>/dev/null || missing_commands+=("$cmd")
-  done
-
-  ((${#missing_commands[@]} == 0)) \
-    || error 127 "Missing commands: ${missing_commands[*]}"
 }
 
 # endregion

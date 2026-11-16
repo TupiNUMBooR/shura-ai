@@ -16,7 +16,8 @@ STDERR_FILE=""
 STATUS=0
 
 main() {
-  need_commands mktemp grep cmp echo
+  # Test helpers (mktemp, grep, cmp) plus external commands used by the script (cat, date).
+  need_commands mktemp grep cmp cat date
   resolve_script
 
   TMP_DIR="$(mktemp -d)"
