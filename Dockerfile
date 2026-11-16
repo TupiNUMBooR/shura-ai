@@ -14,4 +14,6 @@ RUN bash /repo/test/run-tests.sh
 
 RUN cp -r /repo/src/. /app/
 
+ENV DB_DIR=/db
+
 ENTRYPOINT ["/app/entrypoint.sh"]

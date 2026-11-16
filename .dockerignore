@@ -11,6 +11,7 @@
 
 ## Runtime
 .env
+db/
 
 ## User files
 user/
