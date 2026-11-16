@@ -1,0 +1,45 @@
+{
+  "title": "OpenAI API pricing, Standard, short context; text USD per 1M tokens, audio USD per minute",
+  "text": {
+    "gpt-6-astra": {
+      "input": 10,
+      "cached": 1,
+      "write_30m": 12.5,
+      "write_12h": 25,
+      "output": 50
+    },
+    "gpt-6.1-sol": {
+      "input": 2,
+      "cached": 0.1,
+      "write_30m": 2.5,
+      "write_12h": 5,
+      "output": 10
+    },
+    "gpt-6.1-terra": {
+      "input": 1,
+      "cached": 0.05,
+      "write_30m": 1.25,
+      "write_12h": 2.5,
+      "output": 5
+    },
+    "gpt-6-luna": {
+      "input": 0.1,
+      "cached": 0.01,
+      "write_30m": 0.125,
+      "write_12h": 0.25,
+      "output": 0.5
+    },
+    "gpt-5.6-luna": {
+      "input": 0.20,
+      "cached": 0.02,
+      "output": 1.20,
+      "write_30m": 0.25,
+      "write_12h": 0.50
+    }
+  },
+  "audio": {
+    "gpt-transcribe": 0.0045,
+    "gpt-4o-mini-transcribe": 0.003,
+    "gpt-4o-transcribe": 0.006
+  }
+}
