@@ -23,3 +23,6 @@
 - `DOCKERHUB_TOKEN` — Docker Hub [Personal Access Token](https://app.docker.com/settings/personal-access-tokens) с правами `Repo Read, Write, Delete`.
 
 Для настройки CI/CD авторизуйся в GitHub командой `gh auth login`, затем запусти `tools/set-repo-env.sh`.
+
+---
+![](docs/avatar-debug.jpg)
