@@ -1,7 +1,7 @@
 # compose.yml
 services:
-  chatgpt-max-bot:
+  shura-ai:
     build: .
-    image: chatgpt-max-bot:local
+    image: shura-ai:local
     env_file:
       - .env

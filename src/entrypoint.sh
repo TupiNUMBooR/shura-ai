@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 main() {
-  printf '%s\n' 'chatgpt-max-bot: entrypoint stub'
+  printf '%s\n' 'shura-ai: entrypoint stub'
 
   trap 'exit 0' INT TERM
   while :; do
