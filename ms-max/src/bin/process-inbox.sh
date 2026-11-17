@@ -19,7 +19,7 @@ main() {
   trap '[[ -z "$tmp" ]] || rm -f "$tmp"' EXIT
 
   local marker="" response new_marker updates update
-  local user seq inbox attachment type url ext mime n filename message_count
+  local user seq chat_id uid_dir inbox attachment type url ext mime n filename message_count
 
   [[ ! -f "$MARKER_FILE" ]] || marker=$(<"$MARKER_FILE")
   response=$("$POLL_MAX" ${marker:+"$marker"})
@@ -46,8 +46,16 @@ main() {
     seq=$(jq -r '.message.body.seq' <<<"$update")
     [[ "$user" =~ ^[0-9]+$ && "$seq" =~ ^[0-9]+$ ]] || return 65
 
-    inbox="$DB_DIR/users/$user/inbox"
+    uid_dir="$DB_DIR/users/$user"
+    inbox="$uid_dir/inbox"
     mkdir -p "$inbox"
+    chat_id=$(jq -r '.message.recipient.chat_id // empty' <<<"$update")
+    if [[ "$chat_id" =~ ^-?[0-9]+$ ]]; then
+      tmp=$(mktemp "$uid_dir/.chat.XXXXXX")
+      printf '%s\n' "$chat_id" >"$tmp"
+      mv -f -- "$tmp" "$uid_dir/max_chat_id.txt"
+      tmp=""
+    fi
     [[ ! -f "$inbox/$seq.txt" ]] || continue
 
     n=0

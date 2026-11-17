@@ -45,11 +45,11 @@ EOF
 
   export POLL_RESPONSE='{"marker":10,"updates":[
     {"update_type":"message_created","message":{
-      "sender":{"user_id":42},
+      "sender":{"user_id":42},"recipient":{"chat_id":-420},
       "body":{"seq":100,"text":"hello","attachments":[]}
     }},
     {"update_type":"message_created","message":{
-      "sender":{"user_id":42},
+      "sender":{"user_id":42},"recipient":{"chat_id":-420},
       "body":{"seq":101,"text":"photo","attachments":[
         {"type":"image","payload":{"url":"https://example.com/photo"}}
       ]}
@@ -60,16 +60,18 @@ EOF
   check "saves text" 0 "hello" cat "$DB_DIR/users/42/inbox/100.txt"
   check "saves attachment" 0 "fake image" cat "$DB_DIR/users/42/inbox/101.01.jpg"
   check "saves message with attachment" 0 "photo" cat "$DB_DIR/users/42/inbox/101.txt"
+  check "persists MAX chat ID" 0 "-420" cat "$DB_DIR/users/42/max_chat_id.txt"
   check "advances marker" 0 "10" cat "$DB_DIR/marker.txt"
   check "does not create nested max" 0 "" file_absent "$DB_DIR/max"
 
   export CURL_FAIL=1
   check "skips existing messages" 0 "" bash "$SCRIPT"
+  check "does not create seen from incoming message" 0 "" file_absent "$DB_DIR/users/42/outbox/seen_100"
 
   rm -rf "$DB_DIR"
   export POLL_RESPONSE='{"marker":20,"updates":[
     {"update_type":"message_created","message":{
-      "sender":{"user_id":7},
+      "sender":{"user_id":7},"recipient":{"chat_id":-70},
       "body":{"seq":200,"text":"broken","attachments":[
         {"type":"image","payload":{"url":"https://example.com/photo"}}
       ]}

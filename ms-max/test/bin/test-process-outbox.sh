@@ -47,6 +47,21 @@ EOF_POST_MESSAGE
 
   mkdir -p "$POST_PARTS_DIR"
   reset_sender
+  cat >"$TMP_DIR/bin/mark-seen" <<'EOF_MARK'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >>"$ACTION_CALLS_FILE"
+exit "${ACTION_FAIL:-0}"
+EOF_MARK
+  cat >"$TMP_DIR/bin/typing" <<'EOF_TYPING'
+#!/usr/bin/env bash
+printf 'typing:%s\n' "$1" >>"$ACTION_CALLS_FILE"
+exit "${ACTION_FAIL:-0}"
+EOF_TYPING
+  chmod +x "$TMP_DIR/bin/mark-seen" "$TMP_DIR/bin/typing"
+  export MARK_SEEN="$TMP_DIR/bin/mark-seen"
+  export TYPING="$TMP_DIR/bin/typing"
+  export ACTION_CALLS_FILE="$TMP_DIR/action-calls"
+  : >"$ACTION_CALLS_FILE"
 
   check "rejects arguments" 2 "Unexpected arguments" \
     "$SCRIPT" unexpected
@@ -59,12 +74,28 @@ EOF_POST_MESSAGE
     file_empty "$POST_CALLS_FILE"
 
   mkdir -p "$DB_DIR/users/42/outbox" "$DB_DIR/users/7/outbox"
+  printf '%s\n' '-42' >"$DB_DIR/users/42/max_chat_id.txt"
+  printf '%s\n' '-7' >"$DB_DIR/users/7/max_chat_id.txt"
+  : >"$DB_DIR/users/42/outbox/seen_100"
+  : >"$DB_DIR/users/42/outbox/typing"
+  check "dispatches seen before messages" 0 "" "$SCRIPT"
+  check "uses chat ID for seen" 0 "-42" cat "$ACTION_CALLS_FILE"
+  check "deletes seen event" 0 "" file_absent "$DB_DIR/users/42/outbox/seen_100"
+  check "dispatches typing before messages" 0 "" "$SCRIPT"
+  check "uses chat ID for typing" 0 "typing:-42" cat "$ACTION_CALLS_FILE"
+  check "deletes typing event" 0 "" file_absent "$DB_DIR/users/42/outbox/typing"
+  export ACTION_FAIL=1
+  : >"$DB_DIR/users/42/outbox/seen_101"
+  check "ignores failed seen request" 0 "" "$SCRIPT"
+  check "deletes failed seen event" 0 "" file_absent "$DB_DIR/users/42/outbox/seen_101"
+  unset ACTION_FAIL
+
   printf 'first message\n' >"$DB_DIR/users/42/outbox/001.txt"
   printf 'second message\n' >"$DB_DIR/users/42/outbox/002.txt"
   printf 'later message\n' >"$DB_DIR/users/7/outbox/001.txt"
 
   check "sends first queued message" 0 "Sent to 42" "$SCRIPT"
-  check "uses message owner as recipient" 0 "user_id=42" \
+  check "uses stored chat ID as recipient" 0 "-42" \
     cat "$POST_CALLS_FILE"
   check "passes message body" 0 "first message" \
     cat "$POST_BODIES_FILE"

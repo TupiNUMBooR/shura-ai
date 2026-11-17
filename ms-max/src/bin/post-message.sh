@@ -14,11 +14,10 @@ VERBOSE="${VERBOSE:-0}"
 main() {
   handle_help "$@"
 
-  [[ $# -eq 1 ]] || error 2 "Expected query parameters"
+  [[ $# -eq 1 ]] || error 2 "Expected chat_id"
   [[ -n "$MAX_BOT_TOKEN" ]] || error 78 "MAX_BOT_TOKEN is required"
-  local query="$1"
-  local recipient_pattern='(^|&)(user_id|chat_id)=-?[0-9]+(&|$)'
-  [[ "$query" =~ $recipient_pattern ]] || error 2 "Expected user_id=<id> or chat_id=<id>"
+  local chat_id="$1"
+  [[ "$chat_id" =~ ^-?[0-9]+$ ]] || error 2 "Invalid chat_id"
 
   local payload
   payload=$(jq -Rs 'sub("\n$"; "") | if length > 0 and length <= 4000 then {text: .} else error("Text must contain 1..4000 characters") end') \
@@ -28,7 +27,7 @@ main() {
   response=$(mktemp) || error 73 "Cannot create temporary file"
   trap '[[ -z "${response:-}" ]] || rm -f "$response"' EXIT
 
-  [[ "$VERBOSE" == 1 ]] && log "POST /messages?$query" || true
+  [[ "$VERBOSE" == 1 ]] && log "POST /messages?chat_id=$chat_id" || true
 
   if http_code=$(curl --silent --show-error \
       --connect-timeout 10 --max-time 60 \
@@ -37,7 +36,7 @@ main() {
       --header "Authorization: $MAX_BOT_TOKEN" \
       --header 'Content-Type: application/json' \
       --data-binary "$payload" \
-      "${MAX_API_URL%/}/messages?$query"); then
+      "${MAX_API_URL%/}/messages?chat_id=$chat_id"); then
     :
   else
     status=$?
@@ -67,16 +66,11 @@ usage() {
 $SCRIPT_NAME — send a text message through MAX API, print only its mid.
 
 Usage:
-  echo "Hello" | $SCRIPT_NAME 'user_id=123'
-  echo "Hello" | $SCRIPT_NAME 'chat_id=456'
-  printf 'Hello' | $SCRIPT_NAME 'chat_id=456&disable_link_preview=true'
+  echo "Hello" | $SCRIPT_NAME -81322498078826
   $SCRIPT_NAME -h|--help
 
 Arguments:
-  query          Raw query string after ? in POST /messages.
-                 user_id=<id> sends to a user.
-                 chat_id=<id> sends to a chat or channel.
-                 Other query parameters are passed through unchanged.
+  chat_id        Numeric MAX chat ID (may be negative).
 
 Input:
   stdin          Text to send (1..4000 characters).

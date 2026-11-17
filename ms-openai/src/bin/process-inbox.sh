@@ -13,7 +13,7 @@ TRANSCRIBE_MODEL="${TRANSCRIBE_MODEL:-gpt-transcribe}"
 
 main() {
   [[ $# -eq 1 ]] || error 2 "Usage: $SCRIPT_NAME UID_DIR"
-  local uid_dir="$1" inbox="$1/inbox" ai="$1/ai" archive="$1/archive"
+  local uid_dir="$1" inbox="$1/inbox" ai="$1/ai" archive="$1/archive" outbox="$1/outbox"
   local operation="$1/operation.json" txt id file ext result text content image_id
   local stem response_file cost number next tmp op_tmp
   local -a attachments audio_records
@@ -26,6 +26,10 @@ main() {
     [[ -n "$txt" ]] || break
     id="${txt##*/}"
     id="${id%.txt}"
+
+    # The AI has taken responsibility for this message.
+    mkdir -p "$outbox"
+    : >"$outbox/seen_$id"
 
     # The text file is the message marker. All other files with this ID are attachments.
     mapfile -d '' -t attachments < <(find "$inbox" -maxdepth 1 -type f -name "$id.*" ! -name "$id.txt" -print0 | sort -z)

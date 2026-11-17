@@ -26,6 +26,7 @@ main() {
     env "$SCRIPT" "$USER_DIR"
   assert_json "$USER_DIR/ai/000001_u.json" '.role == "user" and .content == "hello Shura"' "stores text message"
   assert_no_files "$USER_DIR/inbox" "removes processed inbox message"
+  assert_file_exists "$USER_DIR/outbox/seen_001" "creates seen only when AI consumes message"
 
   setup_user multimodal
   printf 'What is in this picture?\n' >"$USER_DIR/inbox/002.txt"
@@ -44,6 +45,7 @@ main() {
   printf 'data' >"$USER_DIR/inbox/003.xyz"
   check "rejects unsupported attachment" 65 "Unsupported attachment" env "$SCRIPT" "$USER_DIR"
   [[ -f "$USER_DIR/inbox/003.txt" ]] || fail "unsupported message should remain in inbox"
+  assert_file_exists "$USER_DIR/outbox/seen_003" "marks message as taken even on processing error"
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))
@@ -92,6 +94,11 @@ check() {
     printf '%s\n' "$output" >&2
     ((FAIL += 1))
   fi
+}
+
+assert_file_exists() {
+  if [[ -f "$1" ]]; then echo "ok - $2"; ((PASS += 1));
+  else echo "not ok - $2"; ((FAIL += 1)); fi
 }
 
 assert_file_contains() {

@@ -34,6 +34,8 @@ main() {
   assert_json "$TMP_DIR/request.json" '.model == "test-model"' "includes agent model"
   assert_file_contains "$TMP_DIR/request.json" 'hello from user' "includes user history"
   assert_file_contains "$USER_DIR/outbox" 'the answer' "writes assistant text to outbox"
+  [[ -f "$USER_DIR/outbox/typing" ]] || { echo "not ok - creates typing"; ((FAIL += 1)); }
+  [[ ! -f "$USER_DIR/outbox/typing" ]] || { echo "ok - creates typing"; ((PASS += 1)); }
   assert_file_contains "$USER_DIR/ai/000001_a.json" 'the answer' "saves assistant history"
   assert_json "$USER_DIR"/archive/*_operation.json '.credits == 1' "archives operation with charged credits"
   assert_json "$USER_DIR/user.json" '.credits.spent == 1' "updates user credit balance"

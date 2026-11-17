@@ -105,6 +105,9 @@ main() {
   if ! build_request "$user" "$ai" >"$tmp"; then rm -f "$tmp"; error 65 'Cannot build request'; fi
   mv -f "$tmp" "$request"
 
+  # Tell the messenger the AI is generating a response.
+  : >"$outbox/typing"
+
   # post-responses.sh receives the request JSON on stdin and returns response JSON on stdout.
   tmp="$(mktemp "$archive/.response.XXXXXX")"
   if ! "$POST_RESPONSES" <"$request" >"$tmp"; then
