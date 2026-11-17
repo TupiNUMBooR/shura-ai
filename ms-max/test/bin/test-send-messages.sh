@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-process-outbox.sh
+# test-send-messages.sh
 set -euo pipefail
 
 TEST_NAME="$(basename "$0")"

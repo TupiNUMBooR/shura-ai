@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# process-outbox.sh
+# send-messages.sh
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"

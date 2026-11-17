@@ -21,10 +21,10 @@ worker() {
   done
 }
 
-worker "$SCRIPT_DIR/bin/process-inbox.sh" &
+worker "$SCRIPT_DIR/bin/receive-messages.sh" &
 pids+=("$!")
 
-worker "$SCRIPT_DIR/bin/process-outbox.sh" &
+worker "$SCRIPT_DIR/bin/send-messages.sh" &
 pids+=("$!")
 
 wait -n "${pids[@]}" || :
