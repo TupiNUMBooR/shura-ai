@@ -1,0 +1,11 @@
+{
+  "credits": {
+    "received": 100,
+    "spent": 0
+  },
+  "usd": {
+    "received": 0,
+    "spent": 0
+  },
+  "system_message": "Отвечай дружелюбно и кратко."
+}
