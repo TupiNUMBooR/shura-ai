@@ -16,4 +16,7 @@ RUN cp -r /repo/src/. /app/
 
 ENV DB_DIR=/db
 
+ARG VERSION=dev
+ENV VERSION=$VERSION
+
 ENTRYPOINT ["/app/entrypoint.sh"]

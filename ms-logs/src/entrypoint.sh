@@ -10,6 +10,7 @@ SCRIPT_NAME="$(basename "$0")"
 : "${MAX_ERROR_CHAT_ID:?}"
 
 # optional environment
+VERSION="${VERSION:-dev}"
 DB_DIR="${DB_DIR:-/db}"
 LOG_BATCH_SECONDS="${LOG_BATCH_SECONDS:-60}"
 INCIDENT_DELAY_SECONDS="${INCIDENT_DELAY_SECONDS:-1}"
@@ -62,7 +63,7 @@ main() {
   send_queue debug "$MAX_DEBUG_CHAT_ID" & CHILD_PIDS+=("$!")
   send_queue error "$MAX_ERROR_CHAT_ID" & CHILD_PIDS+=("$!")
   trap shutdown TERM INT
-  log 'Started'
+  log "Started VERSION=$VERSION"
 
   local next_scan=0 now_us id line
   while :; do
@@ -256,9 +257,9 @@ shutdown() {
   (( STOPPING == 0 )) || return
   STOPPING=1
   trap - TERM INT
-  log 'Stopped'
+  log "Stopped VERSION=$VERSION"
   # Capture the shutdown line even if Docker's log driver hasn't flushed it yet.
-  append_debug "[${NAMES[$SELF_ID]:-ms-logs}] [$(date -u +%FT%TZ)] [entrypoint.sh] Stopped"
+  append_debug "[${NAMES[$SELF_ID]:-ms-logs}] [$(date -u +%FT%TZ)] [entrypoint.sh] Stopped VERSION=$VERSION"
   flush_incident
   flush_debug
   local pid

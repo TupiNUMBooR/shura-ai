@@ -4,12 +4,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
+VERSION="${VERSION:-dev}"
 
 pids=()
 
 cleanup() {
   trap - TERM INT EXIT
-  log 'Stopped'
+  log "Stopped VERSION=$VERSION"
   kill "${pids[@]}" 2>/dev/null || :
   wait 2>/dev/null || :
 }
@@ -31,7 +32,7 @@ pids+=("$!")
 worker "$SCRIPT_DIR/bin/send-messages.sh" &
 pids+=("$!")
 
-log 'Started'
+log "Started VERSION=$VERSION"
 
 wait -n "${pids[@]}" || :
 exit 1

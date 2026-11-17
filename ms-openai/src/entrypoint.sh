@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
+VERSION="${VERSION:-dev}"
 
 # optional environment
 DB_DIR="${DB_DIR:-./db}"
@@ -14,7 +15,7 @@ pid=''
 
 cleanup() {
   trap - TERM INT EXIT
-  log 'Stopped'
+  log "Stopped VERSION=$VERSION"
   if [[ -n "$pid" ]]; then
     kill "$pid" 2>/dev/null || :
     wait "$pid" 2>/dev/null || :
@@ -41,7 +42,7 @@ needs_processing() {
 main() {
   local uid_dir found
 
-  log 'Started'
+  log "Started VERSION=$VERSION"
 
   while true; do
     found=0
