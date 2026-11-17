@@ -1,5 +1,35 @@
 #!/usr/bin/env bash
-# process-user.sh
+# process-user.sh — полный цикл ответа одному пользователю.
+#
+# Usage: process-user.sh UID_DIR
+# UID_DIR = /db/<service>/users/<id>; обрабатывается один пользователь за запуск.
+#
+# Алгоритм:
+#   1. Создаёт user.json из user.default.json, если пользователя ещё нет.
+#   2. Если история заканчивается на *_u.json, сразу продолжает ответ:
+#      уже подготовленное сообщение обрабатывается независимо от баланса.
+#   3. Иначе, если inbox пуст — выходит (само пополнение не будит delayed).
+#      Если кредитов нет — переносит всю пачку inbox/* в inbox-delayed/
+#      и отправляет ОДНО уведомление в outbox; исходники не удаляет.
+#      Если кредиты есть — возвращает delayed/* в inbox/ и вызывает
+#      process-inbox.sh (текст/аудио/картинки → ai/*_u.json).
+#   4. Собирает запрос из agent.json, user.system_message и хвоста ai/*.json
+#      в пределах приблизительного CONTEXT_TOKENS; архивирует request.
+#   5. Вызывает Responses API ОДИН раз, проверяет и архивирует response.
+#      Стоимость ответа добавляет в operation.json к стоимости транскрипций.
+#   6. Записывает текст в outbox, output модели (включая reasoning) в *_a.json.
+#   7. Суммирует USD, округляет кредиты вверх (CREDITS_PER_USD), списывает
+#      в user.json и переносит operation.json в архив. При исчерпании
+#      кредитов после ответа добавляет уведомление в outbox.
+#
+# Файлы пользователя: inbox/, inbox-delayed/, ai/, outbox/, archive/,
+# user.json и временный operation.json. Архивы: *_responses_request.json,
+# *_responses_response.json, *_operation.json; транскрипции архивирует
+# process-inbox.sh. Внешние кирпичи задаются переменными окружения.
+#
+# Упрощение по дизайну: это НЕ транзакция. При падении между записью ответа,
+# истории и списанием возможны повторный ответ или потеря начисления.
+# Доставку из outbox выполняет другой сервис; тут она не подтверждается.
 set -euo pipefail
 
 SCRIPT_NAME="${0##*/}"
@@ -9,8 +39,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROCESS_INBOX="${PROCESS_INBOX:-$SCRIPT_DIR/process-inbox.sh}"
 POST_RESPONSES="${POST_RESPONSES:-$SCRIPT_DIR/post-responses.sh}"
 CALCULATE_TEXT_COST="${CALCULATE_TEXT_COST:-$SCRIPT_DIR/calculate-text-cost.sh}"
-AGENT_FILE="${AGENT_FILE:-$SCRIPT_DIR/../../config/agent.json}"
-USER_DEFAULT_FILE="${USER_DEFAULT_FILE:-$SCRIPT_DIR/../../config/user.default.json}"
+AGENT_FILE="${AGENT_FILE:-$SCRIPT_DIR/../config/agent.json}"
+USER_DEFAULT_FILE="${USER_DEFAULT_FILE:-$SCRIPT_DIR/../config/user.default.json}"
 CREDITS_PER_USD="${CREDITS_PER_USD:-100000}"
 CONTEXT_TOKENS="${CONTEXT_TOKENS:-128000}"
 NO_CREDITS_MESSAGE="${NO_CREDITS_MESSAGE:-Кредиты закончились. Пополни баланс, чтобы продолжить.}"
@@ -18,7 +48,7 @@ NO_CREDITS_MESSAGE="${NO_CREDITS_MESSAGE:-Кредиты закончились.
 main() {
   [[ $# -eq 1 ]] || error 2 "Usage: $SCRIPT_NAME UID_DIR"
   local uid_dir="$1" user="$1/user.json" ai="$1/ai" archive="$1/archive"
-  local operation="$1/operation.json" outbox="$1/outbox" balance
+  local operation="$1/operation.json" outbox="$1/outbox" delayed="$1/inbox-delayed" balance
   local last last_type number stamp request response cost text credits total_usd tmp
 
   [[ -d "$uid_dir/inbox" ]] || error 66 "Inbox not found: $uid_dir/inbox"
@@ -33,20 +63,34 @@ main() {
   fi
   balance="$(jq -er '(.credits.received - .credits.spent) | select(type == "number")' "$user")" || error 65 "Invalid user credits"
 
-  if jq -ne --argjson balance "$balance" '$balance <= 0' >/dev/null; then
-    # No billable operations when credits are exhausted. Close pending user history.
-    last="$(last_history "$ai")"
-    if [[ "$last" == *_u.json ]]; then
-      number="${last##*/}"; number="${number%_u.json}"
-      write_json "$ai/${number}_a.json" "$(jq -nc --arg text "$NO_CREDITS_MESSAGE" '{type:"message",role:"assistant",content:[{type:"output_text",text:$text}]}')"
-    fi
-    write_outbox "$outbox" "$NO_CREDITS_MESSAGE"
-    find "$uid_dir/inbox" -maxdepth 1 -type f -delete
-    log 'No credits: sent notification'
-    return 0
-  fi
+  # A pending user history message must receive an answer regardless of balance.
+  last="$(last_history "$ai")"
+  if [[ "$last" != *_u.json ]]; then
+    # No new message means no processing, even if delayed messages exist.
+    local -a incoming=() delayed_files=()
+    shopt -s nullglob
+    incoming=("$uid_dir/inbox/"*)
+    shopt -u nullglob
+    (( ${#incoming[@]} > 0 )) || return 0
 
-  "$PROCESS_INBOX" "$uid_dir"
+    if jq -ne --argjson balance "$balance" '$balance <= 0' >/dev/null; then
+      mkdir -p "$delayed"
+      mv -n -- "${incoming[@]}" "$delayed/"
+      write_outbox "$outbox" "$NO_CREDITS_MESSAGE"
+      log 'No credits: deferred inbox and sent notification'
+      return 0
+    fi
+
+    if [[ -d "$delayed" ]]; then
+      shopt -s nullglob
+      delayed_files=("$delayed/"*)
+      shopt -u nullglob
+      if (( ${#delayed_files[@]} > 0 )); then
+        mv -n -- "${delayed_files[@]}" "$uid_dir/inbox/"
+      fi
+    fi
+    "$PROCESS_INBOX" "$uid_dir"
+  fi
   last="$(last_history "$ai")"
   [[ "$last" == *_u.json ]] || return 0
   number="${last##*/}"; number="${number%_u.json}"
@@ -137,10 +181,16 @@ timestamp() {
 }
 
 write_outbox() {
-  local dir="$1" value="$2" tmp dest
+  local dir="$1" value="$2" tmp dest base suffix
   tmp="$(mktemp "$dir/.out.XXXXXX")"
   printf '%s\n' "$value" >"$tmp"
-  dest="$dir/$(date -u +%s%N).txt"
+  base="$(date -u +%s)"
+  dest="$dir/${base}.txt"
+  suffix=0
+  while [[ -e "$dest" ]]; do
+    ((suffix += 1))
+    dest="$dir/${base}-${suffix}.txt"
+  done
   mv -n "$tmp" "$dest" || error 73 'Cannot create outbox message'
 }
 

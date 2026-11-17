@@ -1,7 +1,7 @@
 # Dockerfile
 FROM alpine:3.24
 
-RUN apk add --no-cache bash curl jq
+RUN apk add --no-cache bash curl jq findutils
 
 COPY . /repo/
 

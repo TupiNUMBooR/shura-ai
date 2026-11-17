@@ -2,7 +2,7 @@
 # calculate-text-cost.sh
 set -euo pipefail
 
-PRICES_FILE="${PRICES_FILE:-$(dirname "${BASH_SOURCE[0]}")/../../config/prices.json}"
+PRICES_FILE="${PRICES_FILE:-$(dirname "${BASH_SOURCE[0]}")/../config/prices.json}"
 
 main() {
   [[ $# -eq 0 ]] || { echo 'Usage: calculate-text-cost.sh < response.json' >&2; exit 2; }
@@ -28,7 +28,7 @@ main() {
            + $w12 * $p.write_12h
            + $output * $p.output) / 1000000
       else error("Invalid usage or prices") end
-  ' )"
+  ' )" || exit 65
   LC_NUMERIC=C printf '%.8f\n' "$cost"
 }
 

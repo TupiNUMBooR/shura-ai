@@ -2,7 +2,7 @@
 # calculate-audio-cost.sh
 set -euo pipefail
 
-PRICES_FILE="${PRICES_FILE:-$(dirname "${BASH_SOURCE[0]}")/../../config/prices.json}"
+PRICES_FILE="${PRICES_FILE:-$(dirname "${BASH_SOURCE[0]}")/../config/prices.json}"
 
 main() {
   [[ $# -eq 1 ]] || { echo 'Usage: calculate-audio-cost.sh MODEL < response.json' >&2; exit 2; }

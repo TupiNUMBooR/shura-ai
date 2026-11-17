@@ -31,23 +31,34 @@ main() {
       PROCESS_INBOX="$TMP_DIR/process-inbox" POST_RESPONSES="$TMP_DIR/post-responses" \
       CALCULATE_TEXT_COST="$TMP_DIR/text-cost" REQUEST_CAPTURE="$TMP_DIR/request.json" \
       "$SCRIPT" "$USER_DIR"
-  assert_file_contains "$TMP_DIR/request.json" '"model":"test-model"' "includes agent model"
+  assert_json "$TMP_DIR/request.json" '.model == "test-model"' "includes agent model"
   assert_file_contains "$TMP_DIR/request.json" 'hello from user' "includes user history"
   assert_file_contains "$USER_DIR/outbox" 'the answer' "writes assistant text to outbox"
   assert_file_contains "$USER_DIR/ai/000001_a.json" 'the answer' "saves assistant history"
-  assert_file_contains "$USER_DIR/archive" '"credits":1' "archives operation with charged credits"
-  assert_file_contains "$USER_DIR/user.json" '"spent":1' "updates user credit balance"
+  assert_json "$USER_DIR"/archive/*_operation.json '.credits == 1' "archives operation with charged credits"
+  assert_json "$USER_DIR/user.json" '.credits.spent == 1' "updates user credit balance"
 
   setup_user no_credits
   printf '{"credits":{"received":0,"spent":0},"usd":{"received":0,"spent":0},"system_message":""}\n' >"$USER_DIR/user.json"
-  printf 'old message' >"$USER_DIR/ai/000001_u.json"
   printf 'queued message' >"$USER_DIR/inbox/queued.txt"
-  check "closes pending history when credits are exhausted" 0 "No credits: sent notification" \
+  check "defers inbox when credits are exhausted" 0 "No credits: deferred inbox" \
     env AGENT_FILE="$TMP_DIR/agent.json" USER_DEFAULT_FILE="$TMP_DIR/user.default.json" \
       "$SCRIPT" "$USER_DIR"
-  assert_file_contains "$USER_DIR/ai/000001_a.json" 'Кредиты закончились' "stores no-credit assistant reply"
   assert_file_contains "$USER_DIR/outbox" 'Кредиты закончились' "notifies user about exhausted credits"
-  assert_empty_dir "$USER_DIR/inbox" "clears inbox after no-credit notification"
+  assert_empty_dir "$USER_DIR/inbox" "moves deferred message out of inbox"
+  assert_file_contains "$USER_DIR/inbox-delayed/queued.txt" 'queued message' "preserves deferred message"
+
+  setup_user pending_no_credits
+  printf '{"credits":{"received":0,"spent":0},"usd":{"received":0,"spent":0},"system_message":""}\n' >"$USER_DIR/user.json"
+  mkdir -p "$USER_DIR/ai"
+  printf '%s\n' '{"role":"user","content":"already prepared"}' >"$USER_DIR/ai/000001_u.json"
+  check "answers prepared history despite exhausted credits" 0 "Responded 000001" \
+    env AGENT_FILE="$TMP_DIR/agent.json" USER_DEFAULT_FILE="$TMP_DIR/user.default.json" \
+      POST_RESPONSES="$TMP_DIR/post-responses" CALCULATE_TEXT_COST="$TMP_DIR/text-cost" \
+      REQUEST_CAPTURE="$TMP_DIR/pending-request.json" "$SCRIPT" "$USER_DIR"
+  assert_file_contains "$TMP_DIR/pending-request.json" 'already prepared' "sends prepared history to API"
+  assert_file_contains "$USER_DIR/ai/000001_a.json" 'the answer' "saves answer for prepared history"
+  assert_file_contains "$USER_DIR/outbox" 'Кредиты закончились' "notifies after balance is exhausted by answer"
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))
@@ -131,6 +142,17 @@ assert_file_contains() {
   fi
   echo "not ok - $name"
   ((FAIL += 1))
+}
+
+assert_json() {
+  local file="$1" expression="$2" name="$3"
+  if jq -e "$expression" "$file" >/dev/null 2>&1; then
+    echo "ok - $name"
+    ((PASS += 1))
+  else
+    echo "not ok - $name"
+    ((FAIL += 1))
+  fi
 }
 
 assert_empty_dir() {

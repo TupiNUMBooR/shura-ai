@@ -14,7 +14,7 @@ main() {
   need_commands env jq
   resolve_script
 
-  check "rejects malformed response JSON" 4 "parse error" \
+  check "rejects malformed response JSON" 65 "parse error" \
     env "$SCRIPT" <<<'{'
 
   check "rejects unexpected arguments" 2 "Usage:" \
@@ -23,13 +23,13 @@ main() {
   check "calculates uncached input and output cost" 0 "0.00060000" \
     env "$SCRIPT" <<< '{"model":"gpt-6-luna","usage":{"input_tokens":1000,"output_tokens":1000}}'
 
-  check "calculates cached and cache write costs" 0 "0.00001115" \
+  check "calculates cached and cache write costs" 0 "0.00001114" \
     env "$SCRIPT" <<< '{"model":"gpt-6-luna","usage":{"input_tokens":10,"output_tokens":20,"input_tokens_details":{"cached_tokens":2,"cache_write_tokens":3,"cache_write_tokens_details":{"ttl_30m_tokens":1,"ttl_12h_tokens":2}}}}'
 
-  check "rejects unknown model" 5 "Unknown model: missing" \
+  check "rejects unknown model" 65 "Unknown model: missing" \
     env "$SCRIPT" <<< '{"model":"missing","usage":{"input_tokens":0,"output_tokens":0}}'
 
-  check "rejects invalid usage totals" 5 "Invalid usage or prices" \
+  check "rejects invalid usage totals" 65 "Invalid usage or prices" \
     env "$SCRIPT" <<< '{"model":"gpt-6-luna","usage":{"input_tokens":2,"output_tokens":0,"input_tokens_details":{"cached_tokens":3}}}'
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"

@@ -24,7 +24,7 @@ main() {
   printf 'hello Shura\n' >"$USER_DIR/inbox/001.txt"
   check "processes text message into user history" 0 "Processed 001 -> 000001_u.json" \
     env "$SCRIPT" "$USER_DIR"
-  assert_file_contains "$USER_DIR/ai/000001_u.json" '"content":"hello Shura"' "stores text message"
+  assert_json "$USER_DIR/ai/000001_u.json" '.role == "user" and .content == "hello Shura"' "stores text message"
   assert_no_files "$USER_DIR/inbox" "removes processed inbox message"
 
   setup_user multimodal
@@ -35,8 +35,8 @@ main() {
     env TRANSCRIBE="$TMP_DIR/transcribe" POST_FILE="$TMP_DIR/post-file" \
       CALCULATE_AUDIO_COST="$TMP_DIR/audio-cost" "$SCRIPT" "$USER_DIR"
   assert_file_contains "$USER_DIR/ai/000001_u.json" 'Recognized speech' "adds transcription to user content"
-  assert_file_contains "$USER_DIR/ai/000001_u.json" '"file_id":"file_test"' "adds uploaded image ID"
-  assert_file_contains "$USER_DIR/operation.json" '"usd":0.0045' "records transcription cost"
+  assert_json "$USER_DIR/ai/000001_u.json" '[.content[]? | select(.type == "input_image" and .file_id == "file_test")] | length == 1' "adds uploaded image ID"
+  assert_json "$USER_DIR/operation.json" '.transcriptions[0].usd == 0.0045' "records transcription cost"
   assert_one_file "$USER_DIR/archive" '*_transcriptions_response.json' "archives transcription response"
 
   setup_user unsupported
@@ -97,6 +97,18 @@ check() {
 assert_file_contains() {
   local file="$1" expected="$2" name="$3"
   if [[ -f "$file" ]] && grep -Fq -- "$expected" "$file"; then
+    echo "ok - $name"
+    ((PASS += 1))
+  else
+    echo "not ok - $name"
+    [[ ! -f "$file" ]] || cat "$file" >&2
+    ((FAIL += 1))
+  fi
+}
+
+assert_json() {
+  local file="$1" expression="$2" name="$3"
+  if jq -e "$expression" "$file" >/dev/null 2>&1; then
     echo "ok - $name"
     ((PASS += 1))
   else
