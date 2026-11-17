@@ -22,6 +22,7 @@ jobs:
         service:
           - ms-max
           - ms-openai
+          - ms-logs
 
     steps:
       - name: Checkout
