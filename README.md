@@ -8,8 +8,8 @@
 ![Release Date](https://img.shields.io/github/release-date/TupiNUMBooR/shura-ai)
 ![Build](https://img.shields.io/github/actions/workflow/status/TupiNUMBooR/shura-ai/release.yml?label=build&logo=githubactions)  
 ![Top Lang](https://img.shields.io/github/languages/top/TupiNUMBooR/shura-ai?logo=gnubash)
-![ms-max Size](https://img.shields.io/docker/image-size/tupinumboor/ms-max/latest?label=ms-max&logo=docker)
-![ms-openai Size](https://img.shields.io/docker/image-size/tupinumboor/ms-openai/latest?label=ms-openai&logo=docker)
+![ms-max Size](https://img.shields.io/docker/image-size/tupinumboor/shura-ai-ms-max/latest?label=ms-max&logo=docker)
+![ms-openai Size](https://img.shields.io/docker/image-size/tupinumboor/shura-ai-ms-openai/latest?label=ms-openai&logo=docker)
 
 **Links:** [GitHub](https://github.com/TupiNUMBooR/shura-ai) | [Docker Hub: ms-max](https://hub.docker.com/r/tupinumboor/shura-ai-ms-max) | [Docker Hub: ms-openai](https://hub.docker.com/r/tupinumboor/shura-ai-ms-openai)
 
