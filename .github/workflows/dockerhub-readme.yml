@@ -15,6 +15,12 @@ jobs:
   sync:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        service:
+          - ms-max
+          - ms-openai
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -24,5 +30,6 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ vars.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+          repository: ${{ vars.DOCKERHUB_USERNAME }}/${{ matrix.service }}
+          readme-filepath: ./README.md
           enable-url-completion: true
