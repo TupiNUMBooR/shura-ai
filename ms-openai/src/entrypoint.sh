@@ -44,7 +44,7 @@ main() {
       needs_processing "$uid_dir" || continue
       found=1
 
-      "$PROCESS_USER" "$uid_dir" &
+      "$PROCESS_USER" "$uid_dir" > >(tee -a "$uid_dir/log.txt" >&2) 2>&1 &
       pid=$!
       if ! wait "$pid"; then
         pid=''

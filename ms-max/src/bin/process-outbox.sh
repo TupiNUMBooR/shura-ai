@@ -13,7 +13,7 @@ TYPING="${TYPING:-$(dirname "${BASH_SOURCE[0]}")/typing.sh}"
 main() {
   [[ $# -eq 0 ]] || error 2 "Unexpected arguments"
 
-  local file uid uid_dir chat_id action attempt chunk tmp sent
+  local file uid uid_dir chat_id action
 
   [[ -d "$DB_DIR/users" ]] || return 0
 
@@ -40,6 +40,15 @@ main() {
     chat_id=$(<"$uid_dir/max_chat_id.txt")
   fi
   [[ "$chat_id" =~ ^-?[0-9]+$ ]] || chat_id=""
+
+  # Route every line from this user's action (including child errors) to both logs.
+  process_action "$file" "$uid_dir" "$uid" "$chat_id" "$action" 2>&1 |
+    tee -a "$uid_dir/log.txt" >&2
+}
+
+process_action() {
+  local file="$1" uid_dir="$2" uid="$3" chat_id="$4" action="$5"
+  local attempt chunk tmp sent
 
   if [[ "$action" != message ]]; then
     if [[ -n "$chat_id" ]]; then

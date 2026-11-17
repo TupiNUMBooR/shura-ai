@@ -14,7 +14,6 @@ main() {
   [[ $# -eq 1 ]] || error 2 "Expected file path"
   [[ -f "$1" && -r "$1" ]] || error 2 "Cannot read file: $1"
 
-  log "Uploading file: $1"
   local response
   response="$(curl -sS --fail-with-body "$OPENAI_ENDPOINT_URL" \
     -H "Authorization: Bearer $OPENAI_API_KEY" \

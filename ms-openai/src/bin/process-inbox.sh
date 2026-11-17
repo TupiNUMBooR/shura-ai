@@ -16,6 +16,7 @@ main() {
   local uid_dir="$1" inbox="$1/inbox" ai="$1/ai" archive="$1/archive" outbox="$1/outbox"
   local operation="$1/operation.json" txt id file ext result text content image_id
   local stem response_file cost number next tmp op_tmp
+  local messages=0 texts=0 images=0 audios=0 first_inbox="" last_inbox="" first_ai="" last_ai=""
   local -a attachments audio_records
 
   [[ -d "$inbox" ]] || error 66 "Inbox not found: $inbox"
@@ -26,6 +27,10 @@ main() {
     [[ -n "$txt" ]] || break
     id="${txt##*/}"
     id="${id%.txt}"
+    if (( messages == 0 )); then
+      log "User ${uid_dir##*/} started"
+      first_inbox="$id"
+    fi
 
     # The AI has taken responsibility for this message.
     mkdir -p "$outbox"
@@ -34,6 +39,7 @@ main() {
     # The text file is the message marker. All other files with this ID are attachments.
     mapfile -d '' -t attachments < <(find "$inbox" -maxdepth 1 -type f -name "$id.*" ! -name "$id.txt" -print0 | sort -z)
     text="$(cat "$txt")"
+    [[ -z "$text" ]] || ((texts += 1))
     content='[]'
     audio_records=()
 
@@ -42,6 +48,7 @@ main() {
       ext="${ext,,}"
       case "$ext" in
         ogg|m4a|mp3|mp4|mpeg|mpga|wav|webm|flac)
+          ((audios += 1))
           result="$("$TRANSCRIBE" "$file")" || error 70 "Transcription failed: $file"
           jq -e '.text | type == "string"' <<<"$result" >/dev/null || error 65 "Invalid transcription: $file"
           stem="$(timestamp)"
@@ -54,6 +61,7 @@ main() {
           audio_records+=("$(jq -nc --arg response "$response_file" --argjson usd "$cost" '{response:$response,usd:$usd}')")
           ;;
         jpg|jpeg|png|webp|gif)
+          ((images += 1))
           result="$("$POST_FILE" "$file")" || error 70 "Upload failed: $file"
           image_id="$(jq -er '.id // .file_id | select(type == "string" and length > 0)' <<<"$result")" || error 65 "No file ID: $file"
           content="$(jq -c --arg id "$image_id" '. + [{type:"input_image",file_id:$id}]' <<<"$content")"
@@ -91,8 +99,15 @@ main() {
     done
 
     rm -f -- "$txt" "${attachments[@]}"
-    log "Processed $id -> ${number}_u.json"
+    ((messages += 1))
+    last_inbox="$id"
+    [[ -n "$first_ai" ]] || first_ai="$number"
+    last_ai="$number"
   done
+
+  if ((messages > 0)); then
+    log "User ${uid_dir##*/} completed: ${messages}m ${texts}t ${images}i ${audios}a, inbox/ ${first_inbox}-${last_inbox}, ai/ ${first_ai}-${last_ai}"
+  fi
 }
 
 timestamp() {

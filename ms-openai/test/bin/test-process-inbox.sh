@@ -22,17 +22,27 @@ main() {
 
   setup_user text
   printf 'hello Shura\n' >"$USER_DIR/inbox/001.txt"
-  check "processes text message into user history" 0 "Processed 001 -> 000001_u.json" \
+  check "processes text message into user history" 0 "User user-text completed: 1m 1t 0i 0a" \
     env "$SCRIPT" "$USER_DIR"
   assert_json "$USER_DIR/ai/000001_u.json" '.role == "user" and .content == "hello Shura"' "stores text message"
   assert_no_files "$USER_DIR/inbox" "removes processed inbox message"
   assert_file_exists "$USER_DIR/outbox/seen_001" "creates seen only when AI consumes message"
+  setup_user batch
+  printf 'one' >"$USER_DIR/inbox/110.txt"
+  printf '' >"$USER_DIR/inbox/111.txt"
+  printf 'image bytes' >"$USER_DIR/inbox/111.png"
+  printf '' >"$USER_DIR/inbox/112.txt"
+  printf 'audio bytes' >"$USER_DIR/inbox/112.ogg"
+  check "summarizes entire batch and history range" 0 \
+    "User user-batch completed: 3m 1t 1i 1a, inbox/ 110-112, ai/ 000001-000003" \
+    env TRANSCRIBE="$TMP_DIR/transcribe" POST_FILE="$TMP_DIR/post-file" \
+      CALCULATE_AUDIO_COST="$TMP_DIR/audio-cost" "$SCRIPT" "$USER_DIR"
 
   setup_user multimodal
   printf 'What is in this picture?\n' >"$USER_DIR/inbox/002.txt"
   printf 'audio bytes' >"$USER_DIR/inbox/002.ogg"
   printf 'image bytes' >"$USER_DIR/inbox/002.PNG"
-  check "transcribes audio and uploads image" 0 "Processed 002 -> 000001_u.json" \
+  check "transcribes audio and uploads image" 0 "User user-multimodal completed: 1m 1t 1i 1a" \
     env TRANSCRIBE="$TMP_DIR/transcribe" POST_FILE="$TMP_DIR/post-file" \
       CALCULATE_AUDIO_COST="$TMP_DIR/audio-cost" "$SCRIPT" "$USER_DIR"
   assert_file_contains "$USER_DIR/ai/000001_u.json" 'Recognized speech' "adds transcription to user content"

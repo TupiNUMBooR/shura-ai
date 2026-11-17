@@ -24,10 +24,17 @@ main() {
   [[ ! -f "$MARKER_FILE" ]] || marker=$(<"$MARKER_FILE")
   response=$("$POLL_MAX" ${marker:+"$marker"})
   new_marker=$(jq -r '.marker // empty' <<<"$response")
-  message_count=$(jq '[.updates[] | select(.update_type == "message_created")] | length' <<<"$response")
-  if ((message_count > 0)); then
-    printf '[%s] [%s] Received %s messages\n' \
-      "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$SCRIPT_NAME" "$message_count" >&2
+  local counts
+  counts=$(jq -r '
+    [.updates[] | select(.update_type == "message_created")] as $messages |
+    "\($messages | length)m " +
+    "\($messages | map(select((.message.body.text // "") | length > 0)) | length)t " +
+    "\($messages | [.[].message.body.attachments[]? | select(.type == "image")] | length)i " +
+    "\($messages | [.[].message.body.attachments[]? | select(.type == "audio")] | length)a"
+  ' <<<"$response")
+  if [[ "$counts" != 0m* ]]; then
+    printf '[%s] [%s] Received: %s\n' \
+      "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$SCRIPT_NAME" "$counts" >&2
   fi
 
   updates=$(jq -c '

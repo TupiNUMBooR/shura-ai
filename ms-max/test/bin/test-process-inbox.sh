@@ -56,7 +56,7 @@ EOF
     }}
   ]}'
 
-  check "processes messages" 0 "" bash "$SCRIPT"
+  check "counts messages and media" 0 "Received: 2m 2t 1i 0a" bash "$SCRIPT"
   check "saves text" 0 "hello" cat "$DB_DIR/users/42/inbox/100.txt"
   check "saves attachment" 0 "fake image" cat "$DB_DIR/users/42/inbox/101.01.jpg"
   check "saves message with attachment" 0 "photo" cat "$DB_DIR/users/42/inbox/101.txt"

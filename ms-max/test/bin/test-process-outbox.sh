@@ -30,7 +30,7 @@ cat >"$body"
 
 jq -eRs 'length <= 3500' <"$body" >/dev/null || exit 1
 
-[[ "${POST_FAIL:-0}" == 0 ]] || exit 1
+[[ "${POST_FAIL:-0}" == 0 ]] || { echo "stub send failed" >&2; exit 1; }
 (( attempt > ${POST_FAIL_UNTIL:-0} )) || exit 1
 (( ${POST_FAIL_FROM:-0} == 0 || attempt < POST_FAIL_FROM )) || exit 1
 
@@ -99,6 +99,8 @@ EOF_TYPING
     cat "$POST_CALLS_FILE"
   check "passes message body" 0 "first message" \
     cat "$POST_BODIES_FILE"
+  check "duplicates delivery log to user file" 0 "Sent to 42" \
+    cat "$DB_DIR/users/42/log.txt"
   check "removes sent message" 0 "" \
     file_absent "$DB_DIR/users/42/outbox/001.txt"
   check "leaves other messages queued" 0 "second message" \
@@ -115,6 +117,8 @@ EOF_TYPING
     file_absent "$DB_DIR/users/42/outbox/002.txt"
   check "preserves failed message" 0 "second message" \
     cat "$DB_DIR/users/42/outbox-failed/002.txt"
+  check "duplicates sender failures to user file" 0 "stub send failed" \
+    cat "$DB_DIR/users/42/log.txt"
   check "leaves other users untouched" 0 "later message" \
     cat "$DB_DIR/users/7/outbox/001.txt"
 

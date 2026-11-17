@@ -105,6 +105,8 @@ main() {
   if ! build_request "$user" "$ai" >"$tmp"; then rm -f "$tmp"; error 65 'Cannot build request'; fi
   mv -f "$tmp" "$request"
 
+  log "AI ${number} started"
+
   # Tell the messenger the AI is generating a response.
   : >"$outbox/typing"
 
@@ -144,7 +146,7 @@ main() {
   if jq -ne --argjson balance "$balance" '$balance <= 0' >/dev/null; then
     write_outbox "$outbox" "$NO_CREDITS_MESSAGE"
   fi
-  log "Responded ${number}, spent ${credits} credits (${total_usd} USD)"
+  log "AI ${number} completed: ${credits} credits, \$${total_usd}"
 }
 
 build_request() {

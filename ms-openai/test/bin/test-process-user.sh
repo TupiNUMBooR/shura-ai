@@ -26,7 +26,7 @@ main() {
 
   setup_user funded
   printf 'user prompt' >"$USER_DIR/inbox/pending.txt"
-  check "posts request and charges credits" 0 "Responded 000001" \
+  check "posts request and charges credits" 0 "AI 000001 completed" \
     env AGENT_FILE="$TMP_DIR/agent.json" USER_DEFAULT_FILE="$TMP_DIR/user.default.json" \
       PROCESS_INBOX="$TMP_DIR/process-inbox" POST_RESPONSES="$TMP_DIR/post-responses" \
       CALCULATE_TEXT_COST="$TMP_DIR/text-cost" REQUEST_CAPTURE="$TMP_DIR/request.json" \
@@ -54,7 +54,7 @@ main() {
   printf '{"credits":{"received":0,"spent":0},"usd":{"received":0,"spent":0},"system_message":""}\n' >"$USER_DIR/user.json"
   mkdir -p "$USER_DIR/ai"
   printf '%s\n' '{"role":"user","content":"already prepared"}' >"$USER_DIR/ai/000001_u.json"
-  check "answers prepared history despite exhausted credits" 0 "Responded 000001" \
+  check "answers prepared history despite exhausted credits" 0 "AI 000001 completed" \
     env AGENT_FILE="$TMP_DIR/agent.json" USER_DEFAULT_FILE="$TMP_DIR/user.default.json" \
       POST_RESPONSES="$TMP_DIR/post-responses" CALCULATE_TEXT_COST="$TMP_DIR/text-cost" \
       REQUEST_CAPTURE="$TMP_DIR/pending-request.json" "$SCRIPT" "$USER_DIR"
