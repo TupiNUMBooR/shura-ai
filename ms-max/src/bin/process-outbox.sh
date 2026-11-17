@@ -1,4 +1,3 @@
-
 #!/usr/bin/env bash
 # process-outbox.sh
 set -euo pipefail
@@ -6,13 +5,15 @@ set -euo pipefail
 SCRIPT_NAME="$(basename "$0")"
 
 # optional environment
-DB_DIR="${DB_DIR:-/db}"
+DB_DIR="${DB_DIR:-./db}"
 POST_MESSAGE="${POST_MESSAGE:-$(dirname "${BASH_SOURCE[0]}")/post-message.sh}"
 
 main() {
   [[ $# -eq 0 ]] || error 2 "Unexpected arguments"
 
   local file uid uid_dir attempt
+
+  [[ -d "$DB_DIR/users" ]] || return 0
 
   file=$(find "$DB_DIR/users" -path '*/outbox/*.txt' -type f | sort | head -n 1)
   [[ -n "$file" ]] || return 0
