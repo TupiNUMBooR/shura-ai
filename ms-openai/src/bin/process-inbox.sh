@@ -106,7 +106,13 @@ main() {
   done
 
   if ((messages > 0)); then
-    log "User ${uid_dir##*/} completed: ${messages}m ${texts}t ${images}i ${audios}a, inbox/ ${first_inbox}-${last_inbox}, ai/ ${first_ai}-${last_ai}"
+    local summary="${messages}m" inbox_range="$first_inbox" ai_range="$first_ai"
+    ((texts == 0)) || summary+=" ${texts}t"
+    ((images == 0)) || summary+=" ${images}i"
+    ((audios == 0)) || summary+=" ${audios}a"
+    [[ "$first_inbox" == "$last_inbox" ]] || inbox_range+="-$last_inbox"
+    [[ "$first_ai" == "$last_ai" ]] || ai_range+="-$last_ai"
+    log "User ${uid_dir##*/} completed: $summary, inbox/ $inbox_range, ai/ $ai_range"
   fi
 }
 

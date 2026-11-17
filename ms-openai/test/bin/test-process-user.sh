@@ -26,7 +26,7 @@ main() {
 
   setup_user funded
   printf 'user prompt' >"$USER_DIR/inbox/pending.txt"
-  check "posts request and charges credits" 0 "AI 000001 completed" \
+  check "posts request and charges credits" 0 'AI 000001 completed: 1 credits, $0.000001' \
     env AGENT_FILE="$TMP_DIR/agent.json" USER_DEFAULT_FILE="$TMP_DIR/user.default.json" \
       PROCESS_INBOX="$TMP_DIR/process-inbox" POST_RESPONSES="$TMP_DIR/post-responses" \
       CALCULATE_TEXT_COST="$TMP_DIR/text-cost" REQUEST_CAPTURE="$TMP_DIR/request.json" \

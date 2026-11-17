@@ -22,7 +22,7 @@ main() {
 
   setup_user text
   printf 'hello Shura\n' >"$USER_DIR/inbox/001.txt"
-  check "processes text message into user history" 0 "User user-text completed: 1m 1t 0i 0a" \
+  check "processes text message into user history" 0 "User user-text completed: 1m 1t, inbox/ 001, ai/ 000001" \
     env "$SCRIPT" "$USER_DIR"
   assert_json "$USER_DIR/ai/000001_u.json" '.role == "user" and .content == "hello Shura"' "stores text message"
   assert_no_files "$USER_DIR/inbox" "removes processed inbox message"
@@ -42,7 +42,7 @@ main() {
   printf 'What is in this picture?\n' >"$USER_DIR/inbox/002.txt"
   printf 'audio bytes' >"$USER_DIR/inbox/002.ogg"
   printf 'image bytes' >"$USER_DIR/inbox/002.PNG"
-  check "transcribes audio and uploads image" 0 "User user-multimodal completed: 1m 1t 1i 1a" \
+  check "transcribes audio and uploads image" 0 "User user-multimodal completed: 1m 1t 1i 1a, inbox/ 002, ai/ 000001" \
     env TRANSCRIBE="$TMP_DIR/transcribe" POST_FILE="$TMP_DIR/post-file" \
       CALCULATE_AUDIO_COST="$TMP_DIR/audio-cost" "$SCRIPT" "$USER_DIR"
   assert_file_contains "$USER_DIR/ai/000001_u.json" 'Recognized speech' "adds transcription to user content"

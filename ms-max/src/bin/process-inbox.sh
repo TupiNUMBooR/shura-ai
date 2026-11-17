@@ -27,10 +27,13 @@ main() {
   local counts
   counts=$(jq -r '
     [.updates[] | select(.update_type == "message_created")] as $messages |
-    "\($messages | length)m " +
-    "\($messages | map(select((.message.body.text // "") | length > 0)) | length)t " +
-    "\($messages | [.[].message.body.attachments[]? | select(.type == "image")] | length)i " +
-    "\($messages | [.[].message.body.attachments[]? | select(.type == "audio")] | length)a"
+    ($messages | length) as $m |
+    ($messages | map(select((.message.body.text // "") | length > 0)) | length) as $t |
+    ($messages | [.[].message.body.attachments[]? | select(.type == "image")] | length) as $i |
+    ($messages | [.[].message.body.attachments[]? | select(.type == "audio")] | length) as $a |
+    ["\($m)m", (if $t > 0 then "\($t)t" else empty end),
+     (if $i > 0 then "\($i)i" else empty end),
+     (if $a > 0 then "\($a)a" else empty end)] | join(" ")
   ' <<<"$response")
   if [[ "$counts" != 0m* ]]; then
     printf '[%s] [%s] Received: %s\n' \
