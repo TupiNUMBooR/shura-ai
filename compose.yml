@@ -13,6 +13,8 @@ services:
   ms-openai:
     build: ./ms-openai
     image: shura-ms-openai:local
+    environment:
+      CREDITS_PER_USD: 100000
     env_file:
       - .env
     volumes:
