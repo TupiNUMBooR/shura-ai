@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_NAME="$(basename "$0")"
 
 # optional environment
 DB_DIR="${DB_DIR:-./db}"
@@ -13,6 +14,7 @@ pid=''
 
 cleanup() {
   trap - TERM INT EXIT
+  log 'Stopped'
   if [[ -n "$pid" ]]; then
     kill "$pid" 2>/dev/null || :
     wait "$pid" 2>/dev/null || :
@@ -21,6 +23,8 @@ cleanup() {
 
 trap cleanup EXIT
 trap 'exit 0' TERM INT
+
+log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
 
 needs_processing() {
   local dir="$1" latest
@@ -36,6 +40,8 @@ needs_processing() {
 
 main() {
   local uid_dir found
+
+  log 'Started'
 
   while true; do
     found=0
