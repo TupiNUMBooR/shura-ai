@@ -15,7 +15,7 @@ main() {
 
   [[ -d "$DB_DIR/users" ]] || return 0
 
-  file=$(find "$DB_DIR/users" -path '*/outbox/*.txt' -type f | sort | head -n 1)
+  file=$(find "$DB_DIR/users" -ignore_readdir_race -path '*/outbox/*.txt' -type f | sort | head -n 1)
   [[ -n "$file" ]] || return 0
 
   uid_dir="${file%/outbox/*}"
