@@ -45,11 +45,13 @@ EOF
 
   export POLL_RESPONSE='{"marker":10,"updates":[
     {"update_type":"message_created","message":{
-      "sender":{"user_id":42},"recipient":{"chat_id":-420},
+      "sender":{"user_id":42},
+      "recipient":{"chat_id":-420,"chat_type":"dialog"},
       "body":{"seq":100,"text":"hello","attachments":[]}
     }},
     {"update_type":"message_created","message":{
-      "sender":{"user_id":42},"recipient":{"chat_id":-420},
+      "sender":{"user_id":42},
+      "recipient":{"chat_id":-420,"chat_type":"dialog"},
       "body":{"seq":101,"text":"photo","attachments":[
         {"type":"image","payload":{"url":"https://example.com/photo"}}
       ]}
@@ -66,12 +68,14 @@ EOF
 
   export CURL_FAIL=1
   check "skips existing messages" 0 "" bash "$SCRIPT"
-  check "does not create seen from incoming message" 0 "" file_absent "$DB_DIR/users/42/outbox/seen_100"
+  check "does not create seen from incoming message" 0 "" \
+    file_absent "$DB_DIR/users/42/outbox/seen_100"
 
   rm -rf "$DB_DIR"
   export POLL_RESPONSE='{"marker":20,"updates":[
     {"update_type":"message_created","message":{
-      "sender":{"user_id":7},"recipient":{"chat_id":-70},
+      "sender":{"user_id":7},
+      "recipient":{"chat_id":-70,"chat_type":"dialog"},
       "body":{"seq":200,"text":"broken","attachments":[
         {"type":"image","payload":{"url":"https://example.com/photo"}}
       ]}
@@ -88,6 +92,28 @@ EOF
   check "retries successfully" 0 "" bash "$SCRIPT"
   check "publishes recovered message" 0 "broken" \
     cat "$DB_DIR/users/7/inbox/200.txt"
+
+  rm -rf "$DB_DIR"
+  export POLL_RESPONSE='{"marker":30,"updates":[
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},
+      "recipient":{"chat_id":420,"chat_type":"chat"},
+      "body":{"seq":300,"text":"group message","attachments":[]}
+    }},
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":43},
+      "recipient":{"chat_id":430,"chat_type":"channel"},
+      "body":{"seq":301,"text":"channel message","attachments":[]}
+    }}
+  ]}'
+
+  check "ignores groups and channels" 0 "" bash "$SCRIPT"
+  check "does not create group users" 0 "" \
+    file_absent "$DB_DIR/users/42"
+  check "does not create channel users" 0 "" \
+    file_absent "$DB_DIR/users/43"
+  check "advances marker for ignored messages" 0 "30" \
+    cat "$DB_DIR/marker.txt"
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))

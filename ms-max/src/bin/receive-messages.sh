@@ -26,7 +26,10 @@ main() {
   new_marker=$(jq -r '.marker // empty' <<<"$response")
   local counts
   counts=$(jq -r '
-    [.updates[] | select(.update_type == "message_created")] as $messages |
+    [.updates[]
+      | select(.update_type == "message_created")
+      | select(.message.recipient.chat_type == "dialog")
+    ] as $messages |
     ($messages | length) as $m |
     ($messages | map(select((.message.body.text // "") | length > 0)) | length) as $t |
     ($messages | [.[].message.body.attachments[]? | select(.type == "image")] | length) as $i |
@@ -43,6 +46,7 @@ main() {
   updates=$(jq -c '
     [.updates[]
       | select(.update_type == "message_created")
+      | select(.message.recipient.chat_type == "dialog")
       | select(.message.sender.user_id != null)
       | select(.message.body.seq != null)]
     | sort_by(.message.body.seq)
