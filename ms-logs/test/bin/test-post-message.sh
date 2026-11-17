@@ -31,7 +31,8 @@ main() {
   run_test "requires MAX_BOT_TOKEN" test_requires_token
   run_test "rejects invalid chat ID" test_requires_recipient
   run_test "rejects empty and long text" test_invalid_text
-  run_test "posts message and prints its mid" test_success
+  run_test "posts formatted code block and prints its mid" test_success
+  run_test "escapes HTML special characters" test_html_escaping
   run_test "reports curl failure" test_curl_failure
   run_test "reports request timeout" test_timeout
   run_test "reports unauthorized response" test_unauthorized
@@ -100,7 +101,14 @@ test_success() {
   assert_curl_arg "Authorization: test-token"
   assert_curl_arg "Content-Type: application/json"
   assert_curl_arg "https://max.example/v1/messages?chat_id=-81322498078826"
-  assert_curl_body_equals_text "Hello MAX"
+  assert_curl_body_equals_text "<pre>Hello MAX</pre>"
+}
+
+test_html_escaping() {
+  setup_curl '{"message":{"body":{"mid":"mid-456"}}}'
+  run run_api "123" <<<'<x> & "quoted" ```'
+  assert_status 0
+  assert_curl_body_equals_text '<pre>&lt;x&gt; &amp; "quoted" ```</pre>'
 }
 
 test_curl_failure() {
@@ -274,7 +282,7 @@ assert_curl_arg() {
 assert_curl_body_equals_text() {
   local expected_text="$1"
 
-  jq -S -n --arg text "$expected_text" '{text: $text}' >"$TMP_DIR/expected-body.json"
+  jq -S -n --arg text "$expected_text" '{text: $text, format: "html"}' >"$TMP_DIR/expected-body.json"
   jq -S . "$CURL_REQUEST_FILE" >"$TMP_DIR/actual-body.json" \
     || fail "curl request body is not valid JSON"
   cmp -s "$TMP_DIR/expected-body.json" "$TMP_DIR/actual-body.json" \

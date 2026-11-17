@@ -20,7 +20,15 @@ main() {
   [[ "$chat_id" =~ ^-?[0-9]+$ ]] || error 2 "Invalid chat_id"
 
   local payload
-  payload=$(jq -Rs 'sub("\n$"; "") | if length > 0 and length <= 4000 then {text: .} else error("Text must contain 1..4000 characters") end') \
+  payload=$(jq -Rs '
+    sub("\n$"; "")
+    | if length > 0 and length <= 4000 then
+        ("<pre>" + (gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;")) + "</pre>") as $formatted
+        | if ($formatted | length) <= 4000 then
+            {text: $formatted, format: "html"}
+          else error("Formatted text exceeds 4000 characters") end
+      else error("Text must contain 1..4000 characters") end
+  ') \
     || error 65 "Invalid message text"
 
   local response status http_code mid
@@ -73,7 +81,7 @@ Arguments:
   chat_id        Numeric MAX chat ID (may be negative).
 
 Input:
-  stdin          Text to send (1..4000 characters).
+  stdin          Plain log text (1..4000 characters), formatted as HTML <pre>.
                  One final newline is removed (convenient for echo).
 
 Output:

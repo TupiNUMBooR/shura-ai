@@ -49,4 +49,10 @@ flush_debug
 for file in "$DB_DIR"/queue/debug/*.txt "$DB_DIR"/queue/error/*.txt; do
   [[ $(wc -c < "$file") -le 3500 ]]
 done
-printf 'ok - global incident context, self filtering, severity and queues\n'
+# Escaped HTML must fit into 3500 characters, including <pre> tags.
+queue_message debug "$(printf '%01200d' 0 | tr 0 '&')"
+for file in "$DB_DIR"/queue/debug/*.txt; do
+  encoded=$(jq -Rs '"<pre>" + (gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;")) + "</pre>" | length' <"$file")
+  (( encoded <= 3500 ))
+done
+printf 'ok - global incident context, self filtering, severity and queues\n' 

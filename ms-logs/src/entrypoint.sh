@@ -100,13 +100,26 @@ log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
 
 # Message files are created outside the visible queues, then atomically renamed.
 queue_message() {
-  local channel="$1" body="$2" tmp dest
+  local channel="$1" body="$2" tmp dest part
   [[ -n "$body" ]] || return 0
-  tmp=$(mktemp "$DB_DIR/.message.XXXXXXXX")
-  printf '%s' "$body" >"$tmp"
-  ((QUEUE_SEQ += 1))
-  printf -v dest '%s/queue/%s/%020d-%06d-%06d.txt' "$DB_DIR" "$channel" "$(date +%s)" "$$" "$QUEUE_SEQ"
-  mv -- "$tmp" "$dest"
+  # Split before queuing: HTML entities may expand the text in post-message.sh.
+  while IFS= read -r -d '' part; do
+    tmp=$(mktemp "$DB_DIR/.message.XXXXXXXX")
+    printf '%s' "$part" >"$tmp"
+    ((QUEUE_SEQ += 1))
+    printf -v dest '%s/queue/%s/%020d-%06d-%06d.txt' "$DB_DIR" "$channel" "$(date +%s)" "$$" "$QUEUE_SEQ"
+    mv -- "$tmp" "$dest"
+  done < <(printf '%s' "$body" | jq -Rsrj --argjson limit "$((LOG_MAX_CHARS - 11))" '
+    def width: if . == "&" then 5 elif . == "<" or . == ">" then 4 else 1 end;
+    [explode[] | [.] | implode]
+    | reduce .[] as $ch ([{text:"", n:0}];
+        if .[-1].n + ($ch | width) > $limit then
+          . + [{text:$ch, n:($ch | width)}]
+        else
+          .[-1].text += $ch | .[-1].n += ($ch | width)
+        end)
+    | .[].text + "\u0000"
+  ')
 }
 
 # Split on actual characters, including the header, not on bytes.
