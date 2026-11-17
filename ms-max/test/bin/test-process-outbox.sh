@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 # test-process-outbox.sh
 set -euo pipefail
@@ -12,7 +13,7 @@ FAIL=0
 TMP_DIR=""
 
 main() {
-  need_commands bash cat date find head mkdir mktemp sort
+  need_commands bash cat chmod date find head mkdir mktemp rm sort wc
   resolve_script
 
   TMP_DIR="$(mktemp -d)"
@@ -41,7 +42,7 @@ EOF_POST_MESSAGE
 
   mkdir -p "$DB_DIR/users"
   check "does nothing when outbox is empty" 0 "" "$SCRIPT"
-  check "does not call the sender for empty outbox" 0 "" \
+  check "does not call sender for empty outbox" 0 "" \
     file_empty "$POST_CALLS_FILE"
 
   mkdir -p "$DB_DIR/users/42/outbox" "$DB_DIR/users/7/outbox"
@@ -49,23 +50,42 @@ EOF_POST_MESSAGE
   printf 'second message\n' >"$DB_DIR/users/42/outbox/002.txt"
   printf 'later message\n' >"$DB_DIR/users/7/outbox/001.txt"
 
-  check "sends the first queued message" 0 "Sent to 42" \
-    "$SCRIPT"
-  check "uses the message owner as recipient" 0 "user_id=42" \
+  check "sends first queued message" 0 "Sent to 42" "$SCRIPT"
+  check "uses message owner as recipient" 0 "user_id=42" \
     cat "$POST_CALLS_FILE"
-  check "passes the message body to the sender" 0 "first message" \
+  check "passes message body" 0 "first message" \
     cat "$POST_BODIES_FILE"
-  check "removes the sent message" 0 "" \
+  check "removes sent message" 0 "" \
     file_absent "$DB_DIR/users/42/outbox/001.txt"
-  check "leaves other queued messages" 0 "second message" \
+  check "leaves other messages queued" 0 "second message" \
     cat "$DB_DIR/users/42/outbox/002.txt"
 
-  POST_FAIL=1
-  export POST_FAIL
-  check "keeps the message when sending fails" 75 "Failed to send to 42" \
+  export POST_FAIL=1
+  : >"$POST_CALLS_FILE"
+
+  check "moves message after two retries" 0 "outbox-failed" \
     "$SCRIPT"
-  check "failed message remains queued" 0 "second message" \
-    cat "$DB_DIR/users/42/outbox/002.txt"
+  check "attempts sending three times" 0 "3" \
+    count_lines "$POST_CALLS_FILE"
+  check "removes failed message from outbox" 0 "" \
+    file_absent "$DB_DIR/users/42/outbox/002.txt"
+  check "preserves failed message" 0 "second message" \
+    cat "$DB_DIR/users/42/outbox-failed/002.txt"
+  check "leaves other users untouched" 0 "later message" \
+    cat "$DB_DIR/users/7/outbox/001.txt"
+
+  mkdir -p "$DB_DIR/users/invalid/outbox"
+  printf 'invalid recipient\n' >"$DB_DIR/users/invalid/outbox/001.txt"
+
+  # Temporarily remove the valid queue so invalid is selected.
+  mv "$DB_DIR/users/7/outbox/001.txt" "$TMP_DIR/later.txt"
+  : >"$POST_CALLS_FILE"
+
+  check "rejects invalid user ID" 0 "outbox-failed" "$SCRIPT"
+  check "does not send to invalid ID" 0 "" \
+    file_empty "$POST_CALLS_FILE"
+  check "preserves invalid recipient message" 0 "invalid recipient" \
+    cat "$DB_DIR/users/invalid/outbox-failed/001.txt"
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))
@@ -100,6 +120,7 @@ check() {
 
 file_absent() { [[ ! -e "$1" ]]; }
 file_empty() { [[ ! -s "$1" ]]; }
+count_lines() { wc -l <"$1" | tr -d ' '; }
 
 need_commands() {
   local cmd

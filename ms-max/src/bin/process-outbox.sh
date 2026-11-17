@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 # process-outbox.sh
 set -euo pipefail
@@ -11,17 +12,30 @@ POST_MESSAGE="${POST_MESSAGE:-$(dirname "${BASH_SOURCE[0]}")/post-message.sh}"
 main() {
   [[ $# -eq 0 ]] || error 2 "Unexpected arguments"
 
-  local file uid mid
+  local file uid uid_dir attempt
+
   file=$(find "$DB_DIR/users" -path '*/outbox/*.txt' -type f | sort | head -n 1)
   [[ -n "$file" ]] || return 0
 
-  uid="${file%/outbox/*}"
-  uid="${uid##*/}"
+  uid_dir="${file%/outbox/*}"
+  uid="${uid_dir##*/}"
 
-  "$POST_MESSAGE" "user_id=$uid" < "$file" > /dev/null || error 75 "Failed to send to $uid"
+  if [[ "$uid" =~ ^[0-9]+$ ]]; then
+    for attempt in 1 2 3; do
+      if "$POST_MESSAGE" "user_id=$uid" < "$file" > /dev/null; then
+        rm -- "$file" || error 73 "Cannot remove $file"
+        log "Sent to $uid"
+        return 0
+      fi
+      (( attempt < 3 )) && sleep 1
+    done
+  fi
 
-  rm -- "$file" || error 73 "Cannot remove $file"
-  log "Sent to $uid"
+  mkdir -p "$uid_dir/outbox-failed"
+  mv -- "$file" "$uid_dir/outbox-failed/" \
+    || error 73 "Cannot move failed message: $file"
+
+  log "[WARN] Failed to send to $uid (moved to outbox-failed)"
 }
 
 # region functions
