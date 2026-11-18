@@ -4,9 +4,8 @@
 # Usage: process-user.sh UID_DIR
 # UID_DIR = /db/<service>/users/<id>; обрабатывается один пользователь за запуск.
 #
-# Создаёт недостающие файлы счётчиков из src/user.default/, не трогая
-# существующие значения. Списание записывает в credits_spent.txt и
-# usd_spent.txt. История и очереди остаются файловыми.
+# Читает кредиты существующего пользователя и записывает расходы.
+# Создание пользователей принадлежит мессенджеру. История и очереди файловые.
 # Операции над разными файлами не являются общей транзакцией.
 set -euo pipefail
 
@@ -17,8 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROCESS_INBOX="${PROCESS_INBOX:-$SCRIPT_DIR/process-inbox.sh}"
 POST_RESPONSES="${POST_RESPONSES:-$SCRIPT_DIR/post-responses.sh}"
 CALCULATE_TEXT_COST="${CALCULATE_TEXT_COST:-$SCRIPT_DIR/calculate-text-cost.sh}"
-AGENT_FILE="${AGENT_FILE:-$SCRIPT_DIR/../config/agent.json}"
-USER_DEFAULT_DIR="${USER_DEFAULT_DIR:-$SCRIPT_DIR/../config/user.default}"
+AGENT_FILE="$SCRIPT_DIR/../config/agent.json"
 CREDITS_PER_USD="${CREDITS_PER_USD:-100000}"
 CONTEXT_TOKENS="${CONTEXT_TOKENS:-128000}"
 NO_CREDITS_MESSAGE="${NO_CREDITS_MESSAGE:-Кредиты закончились. Пополни баланс, чтобы продолжить.}"
@@ -35,7 +33,6 @@ main() {
   [[ "$CONTEXT_TOKENS" =~ ^[0-9]+$ ]] && (( CONTEXT_TOKENS > 0 )) || error 65 "Invalid CONTEXT_TOKENS"
   mkdir -p "$ai" "$archive" "$outbox"
 
-  init_user "$uid_dir"
   balance="$(balance_of "$uid_dir")" || error 65 "Invalid user credits"
 
   # A pending user history message must receive an answer regardless of balance.
@@ -148,30 +145,20 @@ last_history() {
   find "$1" -maxdepth 1 -type f \( -name '*_u.json' -o -name '*_a.json' \) -printf '%f\n' | LC_ALL=C sort -t_ -k1,1n -k2,2r | tail -n 1
 }
 
-init_user() {
-  local dir="$1" name tmp
-  for name in credits_received credits_spent usd_received usd_spent; do
-    [[ -f "$dir/$name.txt" ]] && continue
-    [[ -f "$USER_DEFAULT_DIR/$name.txt" ]] || error 66 "Missing default: $name"
-    tmp="$(mktemp "$dir/.default.XXXXXX")"
-    cat "$USER_DEFAULT_DIR/$name.txt" >"$tmp"
-    # Publish only if nobody else initialized this value.
-    ln "$tmp" "$dir/$name.txt" 2>/dev/null || [[ -f "$dir/$name.txt" ]] || error 73 "Cannot initialize $name"
-    rm -f "$tmp"
-  done
-}
-
 balance_of() {
   local dir="$1" received spent
-  received="$(<"$dir/credits_received.txt")"
-  spent="$(<"$dir/credits_spent.txt")"
+  received=0; spent=0
+  [[ ! -f "$dir/credits_received.txt" ]] || received="$(<"$dir/credits_received.txt")"
+  [[ ! -f "$dir/credits_spent.txt" ]] || spent="$(<"$dir/credits_spent.txt")"
   jq -nr --arg a "$received" --arg b "$spent"     '($a | tonumber) - ($b | tonumber)'
 }
 
 add_amount() {
   local file="$1" amount="$2" tmp
   tmp="$(mktemp "$(dirname "$file")/.amount.XXXXXX")"
-  if jq -nr --arg previous "$(<"$file")" --arg increment "$amount"     '($previous | tonumber) + ($increment | tonumber)' >"$tmp"; then
+  local previous=0
+  [[ ! -f "$file" ]] || previous="$(<"$file")"
+  if jq -nr --arg previous "$previous" --arg increment "$amount"     '($previous | tonumber) + ($increment | tonumber)' >"$tmp"; then
     mv -f "$tmp" "$file"
   else
     rm -f "$tmp"

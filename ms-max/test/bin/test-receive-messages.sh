@@ -26,14 +26,22 @@ EOF
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "${CURL_FAIL:-0}" == 0 ]] || exit 22
+output=""; callback=0
 while (($#)); do
-  if [[ "$1" == "-o" ]]; then
-    shift
-    printf 'fake image' >"$1"
-  fi
-  shift
+  case "$1" in
+    -o|--output) output="$2"; shift 2 ;;
+    --write-out) shift 2 ;;
+    *'/answers?callback_id='*) callback=1; shift ;;
+    *) shift ;;
+  esac
 done
-printf 'image/jpeg'
+if (( callback )); then
+  [[ -z "$output" ]] || printf '{"error":"callback mock error"}' >"$output"
+  printf '%s' "${CURL_HTTP_CODE:-200}"
+else
+  [[ -z "$output" ]] || printf 'fake image' >"$output"
+  printf 'image/jpeg'
+fi
 EOF
   chmod +x "$TMP_DIR/bin/"*
 
@@ -60,6 +68,8 @@ EOF
 
   check "counts messages and media" 0 "Received: 2m 2t 1i" bash "$SCRIPT"
   check "saves text" 0 "hello" cat "$DB_DIR/users/42/inbox/100.txt"
+  check "initializes user credits" 0 "1000" cat "$DB_DIR/users/42/credits_received.txt"
+  check "leaves spent credits absent" 0 "" file_absent "$DB_DIR/users/42/credits_spent.txt"
   check "saves attachment" 0 "fake image" cat "$DB_DIR/users/42/inbox/101.01.jpg"
   check "saves message with attachment" 0 "photo" cat "$DB_DIR/users/42/inbox/101.txt"
   check "persists MAX chat ID" 0 "-420" cat "$DB_DIR/users/42/max_chat_id.txt"
@@ -88,8 +98,18 @@ EOF
   check "handles start and help" 0 "Received: 2m 2t" bash "$SCRIPT"
   check "start includes balance" 0 "Баланс: 633 кредитов" cat "$DB_DIR/users/42/outbox/110.txt"
   check "help includes commands" 0 "/reset — очистить историю" cat "$DB_DIR/users/42/outbox/111.txt"
+  check "help advertises credits" 0 "/credits — мой баланс" cat "$DB_DIR/users/42/outbox/111.txt"
   check "start bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/110.txt"
   check "help bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/111.txt"
+
+  rm -rf "$DB_DIR/users/99"
+  export POLL_RESPONSE='{"marker":15,"updates":[{"update_type":"message_created","message":{
+    "sender":{"user_id":99},"recipient":{"chat_id":-990,"chat_type":"dialog"},
+    "body":{"seq":115,"text":"/start","attachments":[]}
+  }}]}'
+  check "new user start initializes before help" 0 "" bash "$SCRIPT"
+  check "new user start balance" 0 "Баланс: 1000 кредитов" cat "$DB_DIR/users/99/outbox/115.txt"
+  check "new user does not create spent" 0 "" file_absent "$DB_DIR/users/99/credits_spent.txt"
 
   unset CURL_FAIL
   export POLL_RESPONSE='{"marker":16,"updates":[
@@ -101,16 +121,26 @@ EOF
       "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
       "body":{"seq":113,"text":"/ololo","attachments":[]}
     }},
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":114,"text":"/credits","attachments":[]}
+    }},
     {"update_type":"message_callback","callback":{
       "user":{"user_id":42},"payload":"buy:5000","callback_id":"cb-1"
     }}
   ]}'
   check "handles purchase and unknown command" 0 "" bash "$SCRIPT"
   check "creates buy keyboard" 0 "" jq -e '.attachments[0].payload.buttons | length == 3' "$DB_DIR/users/42/outbox/buy_112.json"
+  check "buy shows balance" 0 "" jq -e '.text | contains("633 кредитов")' "$DB_DIR/users/42/outbox/buy_112.json"
+  check "credits shows balance" 0 "633 кредитов" cat "$DB_DIR/users/42/outbox/114.txt"
+  check "credits bypasses AI" 0 "" file_absent "$DB_DIR/users/42/inbox/114.txt"
   check "creates one order per package" 0 "5000" jq -r '.credits' "$DB_DIR/users/42/payments/orders/5000.json"
   check "rejects unknown commands without AI" 0 "Нет такой команды" cat "$DB_DIR/users/42/outbox/113.txt"
   check "unknown command not passed to inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/113.txt"
   check "double click does not duplicate order" 0 "" bash "$SCRIPT"
+  export MAX_BOT_TOKEN=test CURL_HTTP_CODE=400
+  check "callback shows HTTP error body" 0 "MAX callback HTTP 400: {\"error\":\"callback mock error\"}" bash "$SCRIPT"
+  unset MAX_BOT_TOKEN CURL_HTTP_CODE
 
   export CURL_FAIL=1
   rm -rf "$DB_DIR"
@@ -134,6 +164,7 @@ EOF
   check "retries successfully" 0 "" bash "$SCRIPT"
   check "publishes recovered message" 0 "broken" \
     cat "$DB_DIR/users/7/inbox/200.txt"
+  check "partial initialization survives retry" 0 "1000" cat "$DB_DIR/users/7/credits_received.txt"
 
   rm -rf "$DB_DIR"
   export POLL_RESPONSE='{"marker":30,"updates":[

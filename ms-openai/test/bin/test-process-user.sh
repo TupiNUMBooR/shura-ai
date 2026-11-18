@@ -19,19 +19,19 @@ main() {
 
   check "requires UID_DIR argument" 2 "Usage:" env "$SCRIPT"
   check "requires inbox directory" 66 "Inbox not found" \
-    env AGENT_FILE="$TMP_DIR/agent.json" "$SCRIPT" "$TMP_DIR/missing"
+    env "$SCRIPT" "$TMP_DIR/missing"
   mkdir -p "$TMP_DIR/invalid-config/inbox"
   check "rejects invalid credit multiplier" 65 "Invalid CREDITS_PER_USD" \
-    env AGENT_FILE="$TMP_DIR/agent.json" CREDITS_PER_USD=0 "$SCRIPT" "$TMP_DIR/invalid-config"
+    env CREDITS_PER_USD=0 "$SCRIPT" "$TMP_DIR/invalid-config"
 
   setup_user funded
   printf 'user prompt' >"$USER_DIR/inbox/pending.txt"
   check "posts request and charges credits" 0 'AI 000001 completed: 1 credits, $0.000001' \
-    env AGENT_FILE="$TMP_DIR/agent.json" USER_DEFAULT_DIR="$TMP_DIR/user.default" \
+    env \
       PROCESS_INBOX="$TMP_DIR/process-inbox" POST_RESPONSES="$TMP_DIR/post-responses" \
       CALCULATE_TEXT_COST="$TMP_DIR/text-cost" REQUEST_CAPTURE="$TMP_DIR/request.json" \
       "$SCRIPT" "$USER_DIR"
-  assert_json "$TMP_DIR/request.json" '.model == "test-model"' "includes agent model"
+  assert_json "$TMP_DIR/request.json" '.model == "gpt-6-luna"' "includes agent model"
   assert_file_contains "$TMP_DIR/request.json" 'hello from user' "includes user history"
   assert_file_contains "$USER_DIR/outbox" 'the answer' "writes assistant text to outbox"
   [[ -f "$USER_DIR/outbox/typing" ]] || { echo "not ok - creates typing"; ((FAIL += 1)); }
@@ -44,7 +44,7 @@ main() {
   printf '0\n' >"$USER_DIR/credits_received.txt"
   printf 'queued message' >"$USER_DIR/inbox/queued.txt"
   check "defers inbox when credits are exhausted" 0 "No credits: deferred inbox" \
-    env AGENT_FILE="$TMP_DIR/agent.json" USER_DEFAULT_DIR="$TMP_DIR/user.default" \
+    env \
       "$SCRIPT" "$USER_DIR"
   assert_file_contains "$USER_DIR/outbox" 'Кредиты закончились' "notifies user about exhausted credits"
   assert_empty_dir "$USER_DIR/inbox" "moves deferred message out of inbox"
@@ -55,7 +55,7 @@ main() {
   mkdir -p "$USER_DIR/ai"
   printf '%s\n' '{"role":"user","content":"already prepared"}' >"$USER_DIR/ai/000001_u.json"
   check "answers prepared history despite exhausted credits" 0 "AI 000001 completed" \
-    env AGENT_FILE="$TMP_DIR/agent.json" USER_DEFAULT_DIR="$TMP_DIR/user.default" \
+    env \
       POST_RESPONSES="$TMP_DIR/post-responses" CALCULATE_TEXT_COST="$TMP_DIR/text-cost" \
       REQUEST_CAPTURE="$TMP_DIR/pending-request.json" "$SCRIPT" "$USER_DIR"
   assert_file_contains "$TMP_DIR/pending-request.json" 'already prepared' "sends prepared history to API"
@@ -76,14 +76,6 @@ resolve_script() {
 }
 
 create_fixtures() {
-  cat >"$TMP_DIR/agent.json" <<'EOF_AGENT'
-{"model":"test-model","instructions":"test instructions","store":false}
-EOF_AGENT
-  mkdir -p "$TMP_DIR/user.default"
-  printf '10\n' >"$TMP_DIR/user.default/credits_received.txt"
-  printf '0\n' >"$TMP_DIR/user.default/credits_spent.txt"
-  printf '0\n' >"$TMP_DIR/user.default/usd_received.txt"
-  printf '0\n' >"$TMP_DIR/user.default/usd_spent.txt"
   cat >"$TMP_DIR/process-inbox" <<'EOF_PROCESS_INBOX'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -108,6 +100,7 @@ EOF_TEXT_COST
 setup_user() {
   USER_DIR="$TMP_DIR/user-$1"
   mkdir -p "$USER_DIR/inbox"
+  printf '10\n' >"$USER_DIR/credits_received.txt"
 }
 
 check() {

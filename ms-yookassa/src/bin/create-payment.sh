@@ -6,7 +6,7 @@ set -euo pipefail
 : "${YOOKASSA_SECRET_KEY:?YOOKASSA_SECRET_KEY is required}"
 YOOKASSA_API_URL="${YOOKASSA_API_URL:-https://api.yookassa.ru/v3}"
 
-main() {
+main() (
   [[ $# -eq 2 ]] || { echo 'Usage: create-payment.sh RUB IDEMPOTENCE_KEY' >&2; return 2; }
   local rub="$1" key="$2" response code
   [[ "$rub" =~ ^[1-9][0-9]*$ && -n "$key" ]] || return 2
@@ -24,5 +24,5 @@ main() {
   fi
   jq -e '(.id | type=="string" and length>0) and (.status=="pending" or .status=="succeeded") and (.confirmation.confirmation_url | type=="string" and length>0)' "$response" >/dev/null || return 65
   cat "$response"
-}
+)
 main "$@"

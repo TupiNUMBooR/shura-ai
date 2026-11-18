@@ -4,7 +4,7 @@ set -euo pipefail
 : "${YOOKASSA_SHOP_ID:?YOOKASSA_SHOP_ID is required}"
 : "${YOOKASSA_SECRET_KEY:?YOOKASSA_SECRET_KEY is required}"
 YOOKASSA_API_URL="${YOOKASSA_API_URL:-https://api.yookassa.ru/v3}"
-main() {
+main() (
   [[ $# -eq 1 && "$1" =~ ^[a-zA-Z0-9-]+$ ]] || return 2
   local response code
   response=$(mktemp)
@@ -16,5 +16,5 @@ main() {
   if [[ "$code" != 200 ]]; then echo "YooKassa get HTTP $code: $(cat "$response")" >&2; return 75; fi
   jq -e --arg id "$1" '.id == $id and (.status | type == "string")' "$response" >/dev/null || return 65
   cat "$response"
-}
+)
 main "$@"

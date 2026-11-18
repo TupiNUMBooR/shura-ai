@@ -22,7 +22,7 @@ set -euo pipefail
 jq -nc --arg id "$1" --arg status "${PAYMENT_STATUS:-pending}" '{id:$id,status:$status,amount:{value:"79.00",currency:"RUB"},metadata:{polled:true}}'
 MOCK
 chmod +x "$TMP/bin/"*
-export DB_DIR="$TMP/db" PRICES_FILE="$ROOT/src/config/credit-packages.json" CREATE_PAYMENT="$TMP/bin/create-payment" GET_PAYMENT="$TMP/bin/get-payment"
+export DB_DIR="$TMP/db" CREATE_PAYMENT="$TMP/bin/create-payment" GET_PAYMENT="$TMP/bin/get-payment"
 orders="$ROOT/src/bin/process-orders.sh"
 poll="$ROOT/src/bin/poll-payments.sh"
 

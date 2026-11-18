@@ -3,14 +3,14 @@
 set -euo pipefail
 SCRIPT_NAME="${0##*/}"
 DB_DIR="${DB_DIR:-/db}"
-PRICES_FILE="${PRICES_FILE:-$(dirname "$0")/../config/credit-packages.json}"
+PRICES_FILE="$(dirname "$0")/../config/credit-packages.json"
 CREATE_PAYMENT="${CREATE_PAYMENT:-$(dirname "$0")/create-payment.sh}"
 
 log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
 
 main() {
   [[ $# -eq 0 ]] || return 2
-  [[ -f "$PRICES_FILE" ]] || { log '[ERROR] Missing prices.json'; return 66; }
+  [[ -f "$PRICES_FILE" ]] || { log '[ERROR] Missing credit-packages.json'; return 66; }
   [[ -d "$DB_DIR" ]] || return 0
   local order credits rub parent uid_dir tmp response id path out key status
   while IFS= read -r -d '' order; do

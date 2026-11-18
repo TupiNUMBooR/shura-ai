@@ -8,7 +8,8 @@ SCRIPT_NAME="$(basename "$0")"
 DB_DIR="${DB_DIR:-./db}"
 VERBOSE="${VERBOSE:-0}"
 POLL_MAX="${POLL_MAX:-$(dirname "$0")/poll.sh}"
-PRICES_FILE="${PRICES_FILE:-$(dirname "$0")/../config/credit-packages.json}"
+PRICES_FILE="$(dirname "$0")/../config/credit-packages.json"
+DEFAULT_CREDITS="$(dirname "$0")/../config/user.default/credits_received.txt"
 
 MARKER_FILE="$DB_DIR/marker.txt"
 tmp=""
@@ -65,6 +66,8 @@ main() {
     credits="${BASH_REMATCH[1]}"
     rub="$(jq -er --argjson credits "$credits" '.packages[] | select(.credits == $credits) | .rub' "$PRICES_FILE")" || continue
     uid_dir="$DB_DIR/users/$user"
+    mkdir -p "$uid_dir"
+    init_user "$uid_dir"
     mkdir -p "$uid_dir/payments/orders"
     tmp="$(mktemp "$uid_dir/payments/orders/.order.XXXXXX")"
     jq -nc --argjson credits "$credits" '{credits:$credits}' >"$tmp"
@@ -72,9 +75,20 @@ main() {
     ln "$tmp" "$uid_dir/payments/orders/$credits.json" 2>/dev/null || :
     rm -f "$tmp"; tmp=""
     if [[ -n "$callback_id" && -n "${MAX_BOT_TOKEN:-}" ]]; then
-      curl --silent --show-error --fail --connect-timeout 5 --max-time 15 \
-        -X POST -H "Authorization: $MAX_BOT_TOKEN" -H 'Content-Type: application/json' \
-        -d '{}' "${MAX_API_URL:-https://platform-api2.max.ru}/answers?callback_id=$callback_id" >/dev/null || :
+      tmp=$(mktemp "$uid_dir/.callback.XXXXXX")
+      local http_code
+      if http_code=$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
+          --output "$tmp" --write-out '%{http_code}' \
+          -X POST -H "Authorization: $MAX_BOT_TOKEN" -H 'Content-Type: application/json' \
+          -d '{"notification":"Создаю ссылку на оплату..."}' \
+          "${MAX_API_URL:-https://platform-api2.max.ru}/answers?callback_id=$callback_id"); then
+        if [[ "$http_code" != 200 && "$http_code" != 204 ]]; then
+          echo "MAX callback HTTP $http_code: $(cat "$tmp")" >&2
+        fi
+      else
+        echo 'MAX callback request failed' >&2
+      fi
+      rm -f "$tmp"; tmp=""
     fi
   done < <(jq -c '.updates[] | select(.update_type == "message_callback")' <<<"$response")
 
@@ -88,6 +102,7 @@ main() {
     uid_dir="$DB_DIR/users/$user"
     inbox="$uid_dir/inbox"
     mkdir -p "$inbox"
+    init_user "$uid_dir"
     chat_id=$(jq -r '.message.recipient.chat_id // empty' <<<"$update")
     if [[ "$chat_id" =~ ^-?[0-9]+$ ]]; then
       tmp=$(mktemp "$uid_dir/.chat.XXXXXX")
@@ -102,22 +117,28 @@ main() {
       /start|/help)
         mkdir -p "$uid_dir/outbox"
         [[ ! -e "$uid_dir/outbox/$seq.txt" ]] || continue
-        balance=0
-        if [[ -f "$uid_dir/credits_received.txt" && -f "$uid_dir/credits_spent.txt" ]]; then
-          balance=$(jq -nr --arg a "$(<"$uid_dir/credits_received.txt")" --arg b "$(<"$uid_dir/credits_spent.txt")" '($a|tonumber)-($b|tonumber)') \
-            || { echo "Invalid user credits: $user" >&2; return 65; }
-        fi
+        balance=$(balance_of "$uid_dir") || { echo "Invalid user credits: $user" >&2; return 65; }
         tmp=$(mktemp "$uid_dir/outbox/.help.XXXXXX")
-        printf 'Привет! Я Шура 💜\n\nТвоя ИИ-помощница. Могу отвечать на вопросы, разбирать задачи и помогать с идеями.\n\nБаланс: %s кредитов\n\n/start или /help — справка\n/buy — купить кредиты\n/reset — очистить историю\n' "$balance" >"$tmp"
+        printf 'Привет! Я Шура 💜\n\nТвоя ИИ-помощница. Могу отвечать на вопросы, разбирать задачи и помогать с идеями.\n\nБаланс: %s кредитов\n\n/start или /help — справка\n/buy — купить кредиты\n/credits — мой баланс\n/reset — очистить историю\n' "$balance" >"$tmp"
+        mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
+        tmp=""
+        continue
+        ;;
+      /credits)
+        mkdir -p "$uid_dir/outbox"
+        balance=$(balance_of "$uid_dir") || { echo "Invalid user credits: $user" >&2; return 65; }
+        tmp=$(mktemp "$uid_dir/outbox/.credits.XXXXXX")
+        printf '💜 Твой баланс: %s кредитов\n' "$balance" >"$tmp"
         mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
         tmp=""
         continue
         ;;
       /buy)
         mkdir -p "$uid_dir/outbox"
+        balance=$(balance_of "$uid_dir") || { echo "Invalid user credits: $user" >&2; return 65; }
         tmp="$(mktemp "$uid_dir/outbox/.buy.XXXXXX")"
-        jq -n --slurpfile prices "$PRICES_FILE" '
-          {text:"Пополнить баланс 💜\n\nВыбери пакет кредитов:",
+        jq -n --arg balance "$balance" --slurpfile prices "$PRICES_FILE" '
+          {text:("Пополнить баланс 💜\n\nТвой баланс: " + $balance + " кредитов\n\nВыбери пакет кредитов:"),
            attachments:[{type:"inline_keyboard",payload:{buttons:
              [$prices[0].packages[] | [{type:"callback",text:((.credits|tostring)+" кредитов · "+(.rub|tostring)+" ₽"),payload:("buy:"+(.credits|tostring))}]]}}]}
         ' >"$tmp"
@@ -191,6 +212,23 @@ main() {
     mv "$tmp" "$MARKER_FILE"
     tmp=""
   fi
+}
+
+init_user() {
+  local dir="$1" tmp
+  [[ -f "$dir/credits_received.txt" ]] && return 0
+  [[ -f "$DEFAULT_CREDITS" ]] || { echo "Missing default credits: $DEFAULT_CREDITS" >&2; return 66; }
+  tmp=$(mktemp "$dir/.credits.XXXXXX") || return 73
+  cat "$DEFAULT_CREDITS" >"$tmp"
+  ln "$tmp" "$dir/credits_received.txt" 2>/dev/null || [[ -f "$dir/credits_received.txt" ]] || { rm -f "$tmp"; return 73; }
+  rm -f "$tmp"
+}
+
+balance_of() {
+  local dir="$1" received=0 spent=0
+  [[ ! -f "$dir/credits_received.txt" ]] || received=$(<"$dir/credits_received.txt")
+  [[ ! -f "$dir/credits_spent.txt" ]] || spent=$(<"$dir/credits_spent.txt")
+  jq -nr --arg a "$received" --arg b "$spent" '($a | tonumber) - ($b | tonumber)'
 }
 
 main "$@"

@@ -2,7 +2,7 @@
 # calculate-text-cost.sh
 set -euo pipefail
 
-PRICES_FILE="${PRICES_FILE:-$(dirname "${BASH_SOURCE[0]}")/../config/model-prices.json}"
+PRICES_FILE="$(dirname "${BASH_SOURCE[0]}")/../config/model-prices.json"
 
 main() {
   [[ $# -eq 0 ]] || { echo 'Usage: calculate-text-cost.sh < response.json' >&2; exit 2; }
