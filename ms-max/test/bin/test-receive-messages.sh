@@ -73,7 +73,8 @@ EOF
 
   rm -rf "$DB_DIR"
   mkdir -p "$DB_DIR/users/42"
-  printf '%s\n' '{"credits":{"received":2500,"spent":1867}}' >"$DB_DIR/users/42/user.json"
+  printf '2500\n' >"$DB_DIR/users/42/credits_received.txt"
+  printf '1867\n' >"$DB_DIR/users/42/credits_spent.txt"
   export POLL_RESPONSE='{"marker":15,"updates":[
     {"update_type":"message_created","message":{
       "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
@@ -90,6 +91,28 @@ EOF
   check "start bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/110.txt"
   check "help bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/111.txt"
 
+  unset CURL_FAIL
+  export POLL_RESPONSE='{"marker":16,"updates":[
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":112,"text":"/buy","attachments":[]}
+    }},
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":113,"text":"/ololo","attachments":[]}
+    }},
+    {"update_type":"message_callback","callback":{
+      "user":{"user_id":42},"payload":"buy:5000","callback_id":"cb-1"
+    }}
+  ]}'
+  check "handles purchase and unknown command" 0 "" bash "$SCRIPT"
+  check "creates buy keyboard" 0 "" jq -e '.attachments[0].payload.buttons | length == 3' "$DB_DIR/users/42/outbox/buy_112.json"
+  check "creates one order per package" 0 "5000" jq -r '.credits' "$DB_DIR/users/42/payments/orders/5000.json"
+  check "rejects unknown commands without AI" 0 "Нет такой команды" cat "$DB_DIR/users/42/outbox/113.txt"
+  check "unknown command not passed to inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/113.txt"
+  check "double click does not duplicate order" 0 "" bash "$SCRIPT"
+
+  export CURL_FAIL=1
   rm -rf "$DB_DIR"
   export POLL_RESPONSE='{"marker":20,"updates":[
     {"update_type":"message_created","message":{

@@ -14,14 +14,20 @@ VERBOSE="${VERBOSE:-0}"
 main() {
   handle_help "$@"
 
+  local raw=0
+  if [[ "${1:-}" == "--json" ]]; then raw=1; shift; fi
   [[ $# -eq 1 ]] || error 2 "Expected chat_id"
   [[ -n "$MAX_BOT_TOKEN" ]] || error 78 "MAX_BOT_TOKEN is required"
   local chat_id="$1"
   [[ "$chat_id" =~ ^-?[0-9]+$ ]] || error 2 "Invalid chat_id"
 
   local payload
-  payload=$(jq -Rs 'sub("\n$"; "") | if length > 0 and length <= 4000 then {text: .} else error("Text must contain 1..4000 characters") end') \
-    || error 65 "Invalid message text"
+  if (( raw )); then
+    payload=$(jq -ce 'select(type == "object" and (.text | type == "string") and (.attachments | type == "array"))' ) || error 65 "Invalid JSON message"
+  else
+    payload=$(jq -Rs 'sub("\n$"; "") | if length > 0 and length <= 4000 then {text: .} else error("Text must contain 1..4000 characters") end') \
+      || error 65 "Invalid message text"
+  fi
 
   local response status http_code mid
   response=$(mktemp) || error 73 "Cannot create temporary file"

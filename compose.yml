@@ -33,3 +33,12 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
+
+  ms-yookassa:
+    build: ./ms-yookassa
+    image: shura-ms-yookassa:local
+    env_file:
+      - .env
+    volumes:
+      - ./db:/db
+    restart: unless-stopped

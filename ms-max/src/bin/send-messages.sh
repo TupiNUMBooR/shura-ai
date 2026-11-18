@@ -29,6 +29,10 @@ main() {
     else
       file=$(find "$DB_DIR/users" -ignore_readdir_race -type f -path '*/outbox/*.txt' | LC_ALL=C sort | head -n 1)
       action=message
+      if [[ -z "$file" ]]; then
+        file=$(find "$DB_DIR/users" -ignore_readdir_race -type f -path '*/outbox/*.json' | LC_ALL=C sort | head -n 1)
+        action=json
+      fi
     fi
   fi
   [[ -n "$file" && -f "$file" ]] || return 0
@@ -49,6 +53,29 @@ main() {
 process_action() {
   local file="$1" uid_dir="$2" uid="$3" chat_id="$4" action="$5"
   local attempt chunk tmp sent
+
+  if [[ "$action" == json ]]; then
+    local payload
+    if [[ "${file##*/}" == payment_* ]]; then
+      payload=$(jq -ce '
+        . as $p | ($p.yookassa.confirmation.confirmation_url // $p.confirmation_url) as $url |
+        select(($url | type) == "string" and ($url | startswith("https://"))) |
+        {text:("Оплата " + ($p.credits|tostring) + " кредитов за " + ($p.rub|tostring) + " ₽"),
+         attachments:[{type:"inline_keyboard",payload:{buttons:[[ {type:"link",text:"Оплатить",url:$url} ]]}}]}
+      ' "$file") || error 65 "Invalid payment: $file"
+    else
+      payload="$(cat "$file")"
+    fi
+    if [[ "$uid" =~ ^[0-9]+$ && -n "$chat_id" ]] && printf '%s\n' "$payload" | "$POST_MESSAGE" --json "$chat_id" >/dev/null; then
+      rm -f -- "$file"
+      log "Sent to $uid"
+    else
+      mkdir -p "$uid_dir/outbox-failed"
+      mv -- "$file" "$uid_dir/outbox-failed/"
+      log "[WARN] Failed to send to $uid (moved to outbox-failed)"
+    fi
+    return 0
+  fi
 
   if [[ "$action" != message ]]; then
     if [[ -n "$chat_id" ]]; then

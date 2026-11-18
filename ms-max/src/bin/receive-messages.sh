@@ -8,6 +8,7 @@ SCRIPT_NAME="$(basename "$0")"
 DB_DIR="${DB_DIR:-./db}"
 VERBOSE="${VERBOSE:-0}"
 POLL_MAX="${POLL_MAX:-$(dirname "$0")/poll.sh}"
+PRICES_FILE="${PRICES_FILE:-$(dirname "$0")/../config/credit-packages.json}"
 
 MARKER_FILE="$DB_DIR/marker.txt"
 tmp=""
@@ -19,7 +20,7 @@ main() {
   trap '[[ -z "$tmp" ]] || rm -f "$tmp"' EXIT
 
   local marker="" response new_marker updates update
-  local user seq chat_id uid_dir inbox attachment type url ext mime n filename message_count command balance
+  local user seq chat_id uid_dir inbox attachment type url ext mime n filename message_count command balance payload credits rub callback_id
 
   [[ ! -f "$MARKER_FILE" ]] || marker=$(<"$MARKER_FILE")
   response=$("$POLL_MAX" ${marker:+"$marker"})
@@ -53,6 +54,30 @@ main() {
     | .[]
   ' <<<"$response")
 
+  # Purchase callbacks are separate MAX update events, not user messages.
+  while IFS= read -r update; do
+    [[ -n "$update" ]] || continue
+    user="$(jq -r '.callback.user.user_id // empty' <<<"$update")"
+    payload="$(jq -r '.callback.payload // empty' <<<"$update")"
+    callback_id="$(jq -r '.callback.callback_id // empty' <<<"$update")"
+    [[ "$user" =~ ^[0-9]+$ ]] || continue
+    [[ "$payload" =~ ^buy:([0-9]+)$ ]] || continue
+    credits="${BASH_REMATCH[1]}"
+    rub="$(jq -er --argjson credits "$credits" '.packages[] | select(.credits == $credits) | .rub' "$PRICES_FILE")" || continue
+    uid_dir="$DB_DIR/users/$user"
+    mkdir -p "$uid_dir/payments/orders"
+    tmp="$(mktemp "$uid_dir/payments/orders/.order.XXXXXX")"
+    jq -nc --argjson credits "$credits" '{credits:$credits}' >"$tmp"
+    # A duplicate click while an order exists must not overwrite it.
+    ln "$tmp" "$uid_dir/payments/orders/$credits.json" 2>/dev/null || :
+    rm -f "$tmp"; tmp=""
+    if [[ -n "$callback_id" && -n "${MAX_BOT_TOKEN:-}" ]]; then
+      curl --silent --show-error --fail --connect-timeout 5 --max-time 15 \
+        -X POST -H "Authorization: $MAX_BOT_TOKEN" -H 'Content-Type: application/json' \
+        -d '{}' "${MAX_API_URL:-https://platform-api2.max.ru}/answers?callback_id=$callback_id" >/dev/null || :
+    fi
+  done < <(jq -c '.updates[] | select(.update_type == "message_callback")' <<<"$response")
+
   while IFS= read -r update; do
     [[ -n "$update" ]] || continue
 
@@ -78,12 +103,32 @@ main() {
         mkdir -p "$uid_dir/outbox"
         [[ ! -e "$uid_dir/outbox/$seq.txt" ]] || continue
         balance=0
-        if [[ -f "$uid_dir/user.json" ]]; then
-          balance=$(jq -er '.credits.received - .credits.spent' "$uid_dir/user.json") \
+        if [[ -f "$uid_dir/credits_received.txt" && -f "$uid_dir/credits_spent.txt" ]]; then
+          balance=$(jq -nr --arg a "$(<"$uid_dir/credits_received.txt")" --arg b "$(<"$uid_dir/credits_spent.txt")" '($a|tonumber)-($b|tonumber)') \
             || { echo "Invalid user credits: $user" >&2; return 65; }
         fi
         tmp=$(mktemp "$uid_dir/outbox/.help.XXXXXX")
         printf 'Привет! Я Шура 💜\n\nТвоя ИИ-помощница. Могу отвечать на вопросы, разбирать задачи и помогать с идеями.\n\nБаланс: %s кредитов\n\n/start или /help — справка\n/buy — купить кредиты\n/reset — очистить историю\n' "$balance" >"$tmp"
+        mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
+        tmp=""
+        continue
+        ;;
+      /buy)
+        mkdir -p "$uid_dir/outbox"
+        tmp="$(mktemp "$uid_dir/outbox/.buy.XXXXXX")"
+        jq -n --slurpfile prices "$PRICES_FILE" '
+          {text:"Пополнить баланс 💜\n\nВыбери пакет кредитов:",
+           attachments:[{type:"inline_keyboard",payload:{buttons:
+             [$prices[0].packages[] | [{type:"callback",text:((.credits|tostring)+" кредитов · "+(.rub|tostring)+" ₽"),payload:("buy:"+(.credits|tostring))}]]}}]}
+        ' >"$tmp"
+        mv -- "$tmp" "$uid_dir/outbox/buy_${seq}.json"
+        tmp=""
+        continue
+        ;;
+      /*)
+        mkdir -p "$uid_dir/outbox"
+        tmp="$(mktemp "$uid_dir/outbox/.unknown.XXXXXX")"
+        printf 'Нет такой команды. Используй /help.\n' >"$tmp"
         mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
         tmp=""
         continue

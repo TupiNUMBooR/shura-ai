@@ -196,6 +196,16 @@ EOF_TYPING
   check "removes empty message" 0 "" \
     file_absent "$DB_DIR/users/42/outbox/empty.txt"
 
+  # Universal YooKassa payment JSON becomes a MAX link button only at transport time.
+  reset_sender
+  cat >"$DB_DIR/users/42/outbox/payment_test-123.json" <<'EOF_PAYMENT'
+{"credits":5000,"rub":79,"yookassa":{"id":"test-123","confirmation":{"confirmation_url":"https://pay.example/test-123"}}}
+EOF_PAYMENT
+  check "sends universal payment as MAX button" 0 "Sent to 42" "$SCRIPT"
+  check "passes JSON flag to sender" 0 "--json" cat "$POST_CALLS_FILE"
+  check "converts payment URL to link button" 0 "" jq -e '.attachments[0].payload.buttons[0][0].url == "https://pay.example/test-123"' "$POST_BODIES_FILE"
+  check "removes delivered payment event" 0 "" file_absent "$DB_DIR/users/42/outbox/payment_test-123.json"
+
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))
 }
