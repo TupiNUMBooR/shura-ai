@@ -19,7 +19,7 @@ main() {
   trap '[[ -z "$tmp" ]] || rm -f "$tmp"' EXIT
 
   local marker="" response new_marker updates update
-  local user seq chat_id uid_dir inbox attachment type url ext mime n filename message_count
+  local user seq chat_id uid_dir inbox attachment type url ext mime n filename message_count command balance
 
   [[ ! -f "$MARKER_FILE" ]] || marker=$(<"$MARKER_FILE")
   response=$("$POLL_MAX" ${marker:+"$marker"})
@@ -71,6 +71,24 @@ main() {
       tmp=""
     fi
     [[ ! -f "$inbox/$seq.txt" ]] || continue
+
+    command=$(jq -r '.message.body.text // ""' <<<"$update")
+    case "$command" in
+      /start|/help)
+        mkdir -p "$uid_dir/outbox"
+        [[ ! -e "$uid_dir/outbox/$seq.txt" ]] || continue
+        balance=0
+        if [[ -f "$uid_dir/user.json" ]]; then
+          balance=$(jq -er '.credits.received - .credits.spent' "$uid_dir/user.json") \
+            || { echo "Invalid user credits: $user" >&2; return 65; }
+        fi
+        tmp=$(mktemp "$uid_dir/outbox/.help.XXXXXX")
+        printf 'Привет! Я Шура 💜\n\nТвоя ИИ-помощница. Могу отвечать на вопросы, разбирать задачи и помогать с идеями.\n\nБаланс: %s кредитов\n\n/start или /help — справка\n/buy — купить кредиты\n/reset — очистить историю\n' "$balance" >"$tmp"
+        mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
+        tmp=""
+        continue
+        ;;
+    esac
 
     n=0
     while IFS= read -r attachment; do

@@ -72,6 +72,25 @@ EOF
     file_absent "$DB_DIR/users/42/outbox/seen_100"
 
   rm -rf "$DB_DIR"
+  mkdir -p "$DB_DIR/users/42"
+  printf '%s\n' '{"credits":{"received":2500,"spent":1867}}' >"$DB_DIR/users/42/user.json"
+  export POLL_RESPONSE='{"marker":15,"updates":[
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":110,"text":"/start","attachments":[]}
+    }},
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":111,"text":"/help","attachments":[]}
+    }}
+  ]}'
+  check "handles start and help" 0 "Received: 2m 2t" bash "$SCRIPT"
+  check "start includes balance" 0 "Баланс: 633 кредитов" cat "$DB_DIR/users/42/outbox/110.txt"
+  check "help includes commands" 0 "/reset — очистить историю" cat "$DB_DIR/users/42/outbox/111.txt"
+  check "start bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/110.txt"
+  check "help bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/111.txt"
+
+  rm -rf "$DB_DIR"
   export POLL_RESPONSE='{"marker":20,"updates":[
     {"update_type":"message_created","message":{
       "sender":{"user_id":7},
