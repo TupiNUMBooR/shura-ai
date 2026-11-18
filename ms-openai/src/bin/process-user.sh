@@ -20,6 +20,7 @@ AGENT_FILE="$SCRIPT_DIR/../config/agent.json"
 CREDITS_PER_USD="${CREDITS_PER_USD:-100000}"
 CONTEXT_TOKENS="${CONTEXT_TOKENS:-128000}"
 NO_CREDITS_MESSAGE="${NO_CREDITS_MESSAGE:-Кредиты закончились. Пополни баланс, чтобы продолжить.}"
+SHOW_CREDITS="${SHOW_CREDITS:-false}"
 
 main() {
   [[ $# -eq 1 ]] || error 2 "Usage: $SCRIPT_NAME UID_DIR"
@@ -103,7 +104,6 @@ main() {
 
   text="$(jq -r '[.output[] | select(.type == "message") | .content[]? | select(.type == "output_text") | .text] | join("\n")' "$response")"
   [[ -n "$text" ]] || error 65 'Response has no output text'
-  write_outbox "$outbox" "$text"
   # Save all output items (including reasoning) for subsequent context.
   write_json "$ai/${number}_a.json" "$(jq -c 'if (.output | length) == 1 then .output[0] else .output end' "$response")"
 
@@ -115,6 +115,10 @@ main() {
   mv -f "$operation" "$archive/${stamp}_operation.json"
 
   balance="$(balance_of "$uid_dir")"
+  if [[ "$SHOW_CREDITS" == true ]]; then
+    text+=$(printf '\n\n💜 Списано: %s кредитов · Осталось: %s' "$credits" "$balance")
+  fi
+  write_outbox "$outbox" "$text"
   if jq -ne --argjson balance "$balance" '$balance <= 0' >/dev/null; then
     write_outbox "$outbox" "$NO_CREDITS_MESSAGE"
   fi

@@ -40,6 +40,20 @@ main() {
   assert_json "$USER_DIR"/archive/*_operation.json '.credits == 1' "archives operation with charged credits"
   assert_file_contains "$USER_DIR/credits_spent.txt" "1" "updates user credit balance"
 
+  setup_user visible_credits
+  printf 'user prompt' >"$USER_DIR/inbox/pending.txt"
+  check "SHOW_CREDITS adds spending and remaining balance" 0 'AI 000001 completed' \
+    env SHOW_CREDITS=true PROCESS_INBOX="$TMP_DIR/process-inbox" \
+      POST_RESPONSES="$TMP_DIR/post-responses" CALCULATE_TEXT_COST="$TMP_DIR/text-cost" \
+      REQUEST_CAPTURE="$TMP_DIR/visible-request.json" "$SCRIPT" "$USER_DIR"
+  assert_file_contains "$USER_DIR/outbox" '💜 Списано: 1 кредитов · Осталось: 9' "adds credit footer"
+  assert_file_contains "$USER_DIR/ai/000001_a.json" 'the answer' "keeps original AI history"
+  if grep -Fq 'Списано:' "$USER_DIR/ai/000001_a.json"; then
+    echo 'not ok - credit footer leaked into history'; ((FAIL += 1))
+  else
+    echo 'ok - credit footer not saved in history'; ((PASS += 1))
+  fi
+
   setup_user no_credits
   printf '0\n' >"$USER_DIR/credits_received.txt"
   printf 'queued message' >"$USER_DIR/inbox/queued.txt"

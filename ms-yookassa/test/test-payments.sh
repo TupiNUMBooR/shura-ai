@@ -12,6 +12,7 @@ cat >"$TMP/bin/create-payment" <<'MOCK'
 set -euo pipefail
 [[ "${CREATE_FAIL:-0}" == 0 ]] || exit "${CREATE_FAIL}"
 [[ "$1" == 79 || "$1" == 19 ]] || exit 2
+[[ "$3" == 5000 || "$3" == 1000 ]] || exit 2
 id="test-$(printf '%s' "$2" | tr -cd 'a-zA-Z0-9-' | cut -c1-30)"
 jq -nc --arg id "$id" --arg value "$1.00" '{id:$id,status:"pending",amount:{value:$value,currency:"RUB"},confirmation:{type:"redirect",confirmation_url:("https://pay.example/"+$id)},merchant_metadata:{keep:"all fields"}}'
 MOCK
@@ -48,7 +49,9 @@ assert test -f "$file"
 PAYMENT_STATUS=succeeded bash "$poll" >/dev/null
 assert test ! -e "$file"
 assert test -f "$DB_DIR/max/users/42/payments/completed/$(basename "$file")"
+assert test -f "$DB_DIR/max/users/42/outbox/$(basename "${file%.json}").txt"
 assert test "$(cat "$DB_DIR/max/users/42/credits_received.txt")" = 5000
+assert grep -q "Твой баланс: 5000 кредитов" "$DB_DIR/max/users/42/outbox/$(basename "${file%.json}").txt"
 assert test "$(cat "$DB_DIR/telegram/users/7/credits_received.txt")" = 1000
 bash "$poll" >/dev/null
 assert test "$(cat "$DB_DIR/max/users/42/credits_received.txt")" = 5000

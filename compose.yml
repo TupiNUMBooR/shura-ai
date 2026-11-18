@@ -15,6 +15,8 @@ services:
     image: shura-ms-openai:local
     environment:
       CREDITS_PER_USD: 100000
+      SHOW_CREDITS: "true"
+      SHOW_TRANSCRIPTION: "true"
     env_file:
       - .env
     volumes:

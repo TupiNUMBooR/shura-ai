@@ -33,10 +33,11 @@ main() {
       | select(.message.recipient.chat_type == "dialog")
     ] as $messages |
     ($messages | length) as $m |
-    ($messages | map(select((.message.body.text // "") | length > 0)) | length) as $t |
+    ($messages | map(select((.message.body.text // "") | startswith("/"))) | length) as $c |
+    ($messages | map(select((((.message.body.text // "") | length) > 0) and (((.message.body.text // "") | startswith("/")) | not))) | length) as $t |
     ($messages | [.[].message.body.attachments[]? | select(.type == "image")] | length) as $i |
     ($messages | [.[].message.body.attachments[]? | select(.type == "audio")] | length) as $a |
-    ["\($m)m", (if $t > 0 then "\($t)t" else empty end),
+    ["\($m)m", (if $c > 0 then "\($c)c" else empty end), (if $t > 0 then "\($t)t" else empty end),
      (if $i > 0 then "\($i)i" else empty end),
      (if $a > 0 then "\($a)a" else empty end)] | join(" ")
   ' <<<"$response")

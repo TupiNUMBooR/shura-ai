@@ -10,6 +10,7 @@ TRANSCRIBE="${TRANSCRIBE:-$SCRIPT_DIR/transcribe.sh}"
 POST_FILE="${POST_FILE:-$SCRIPT_DIR/post-file.sh}"
 CALCULATE_AUDIO_COST="${CALCULATE_AUDIO_COST:-$SCRIPT_DIR/calculate-audio-cost.sh}"
 TRANSCRIBE_MODEL="${TRANSCRIBE_MODEL:-gpt-transcribe}"
+SHOW_TRANSCRIPTION="${SHOW_TRANSCRIPTION:-false}"
 
 main() {
   [[ $# -eq 1 ]] || error 2 "Usage: $SCRIPT_NAME UID_DIR"
@@ -57,6 +58,12 @@ main() {
           cost="$("$CALCULATE_AUDIO_COST" "$TRANSCRIBE_MODEL" <<<"$result")" || error 70 "Audio pricing failed: $file"
           [[ "$cost" =~ ^[0-9]+([.][0-9]+)?$ ]] || error 65 "Invalid cost: $cost"
           result="$(jq -r '.text' <<<"$result")"
+          if [[ "$SHOW_TRANSCRIPTION" == true && -n "$result" ]]; then
+            mkdir -p "$outbox"
+            tmp=$(mktemp "$outbox/.transcription.XXXXXX")
+            printf '🎙️ Я услышала:\n\n«%s»\n' "$result" >"$tmp"
+            mv -f "$tmp" "$outbox/transcription_${id}_${audios}.txt"
+          fi
           [[ -z "$result" ]] || text="${text:+$text$'\n'}$result"
           audio_records+=("$(jq -nc --arg response "$response_file" --argjson usd "$cost" '{response:$response,usd:$usd}')")
           ;;

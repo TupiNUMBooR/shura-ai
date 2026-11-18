@@ -95,7 +95,8 @@ EOF
       "body":{"seq":111,"text":"/help","attachments":[]}
     }}
   ]}'
-  check "handles start and help" 0 "Received: 2m 2t" bash "$SCRIPT"
+  check "handles start and help" 0 "Received: 2m 2c" bash "$SCRIPT"
+  check "commands counted separately from text" 0 "Received: 2m 2c" bash "$SCRIPT"
   check "start includes balance" 0 "Баланс: 633 кредитов" cat "$DB_DIR/users/42/outbox/110.txt"
   check "help includes commands" 0 "/reset — очистить историю" cat "$DB_DIR/users/42/outbox/111.txt"
   check "help advertises credits" 0 "/credits — мой баланс" cat "$DB_DIR/users/42/outbox/111.txt"

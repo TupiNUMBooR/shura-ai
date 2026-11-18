@@ -50,6 +50,21 @@ main() {
   assert_json "$USER_DIR/operation.json" '.transcriptions[0].usd == 0.0045' "records transcription cost"
   assert_one_file "$USER_DIR/archive" '*_transcriptions_response.json' "archives transcription response"
 
+  setup_user show_transcription
+  printf '' >"$USER_DIR/inbox/020.txt"
+  printf 'audio bytes' >"$USER_DIR/inbox/020.ogg"
+  check "SHOW_TRANSCRIPTION sends recognized speech" 0 "User user-show_transcription completed" \
+    env SHOW_TRANSCRIPTION=true TRANSCRIBE="$TMP_DIR/transcribe" \
+      CALCULATE_AUDIO_COST="$TMP_DIR/audio-cost" "$SCRIPT" "$USER_DIR"
+  assert_file_contains "$USER_DIR/outbox/transcription_020_1.txt" '🎙️ Я услышала:' "writes transcription notice"
+  assert_file_contains "$USER_DIR/outbox/transcription_020_1.txt" 'Recognized speech' "includes recognized text"
+  assert_file_contains "$USER_DIR/ai/000001_u.json" 'Recognized speech' "still includes transcription in history"
+  if [[ -e "$TMP_DIR/user-multimodal/outbox/transcription_002_1.txt" ]]; then
+    echo 'not ok - transcription shown when disabled'; ((FAIL += 1))
+  else
+    echo 'ok - transcription suppressed by default'; ((PASS += 1))
+  fi
+
   setup_user unsupported
   printf 'look at this\n' >"$USER_DIR/inbox/003.txt"
   printf 'data' >"$USER_DIR/inbox/003.xyz"

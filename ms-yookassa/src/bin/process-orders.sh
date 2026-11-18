@@ -26,7 +26,7 @@ main() {
       tmp=$(mktemp "$parent/orders/.order.XXXXXX")
       if jq -c --arg key "$key" --argjson credits "$credits" '. + {credits:$credits,idempotence_key:$key}' "$order" >"$tmp"; then mv -f "$tmp" "$order"; else rm -f "$tmp"; rm -f "$order"; continue; fi
     fi
-    if response=$("$CREATE_PAYMENT" "$rub" "$key"); then
+    if response=$("$CREATE_PAYMENT" "$rub" "$key" "$credits"); then
       :
     else
       status=$?

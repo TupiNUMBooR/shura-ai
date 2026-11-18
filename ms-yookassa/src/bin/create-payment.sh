@@ -7,12 +7,12 @@ set -euo pipefail
 YOOKASSA_API_URL="${YOOKASSA_API_URL:-https://api.yookassa.ru/v3}"
 
 main() (
-  [[ $# -eq 2 ]] || { echo 'Usage: create-payment.sh RUB IDEMPOTENCE_KEY' >&2; return 2; }
-  local rub="$1" key="$2" response code
-  [[ "$rub" =~ ^[1-9][0-9]*$ && -n "$key" ]] || return 2
+  [[ $# -eq 3 ]] || { echo 'Usage: create-payment.sh RUB IDEMPOTENCE_KEY CREDITS' >&2; return 2; }
+  local rub="$1" key="$2" credits="$3" response code
+  [[ "$rub" =~ ^[1-9][0-9]*$ && -n "$key" && "$credits" =~ ^[1-9][0-9]*$ ]] || return 2
   response=$(mktemp)
   trap 'rm -f "$response"' EXIT
-  code=$(jq -nc --arg value "$rub" '{amount:{value:($value+".00"),currency:"RUB"},capture:true,confirmation:{type:"redirect",return_url:"https://max.ru"},description:"Кредиты Шуры"}' |
+  code=$(jq -nc --arg value "$rub" --arg credits "$credits" '{amount:{value:($value+".00"),currency:"RUB"},capture:true,confirmation:{type:"redirect",return_url:"https://max.ru"},description:($credits + " кредитов для Шуры")}' |
     curl --silent --show-error --connect-timeout 10 --max-time 45 \
       --user "$YOOKASSA_SHOP_ID:$YOOKASSA_SECRET_KEY" \
       --header 'Content-Type: application/json' --header "Idempotence-Key: $key" \
