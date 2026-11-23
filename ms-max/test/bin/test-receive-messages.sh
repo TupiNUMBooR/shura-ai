@@ -40,7 +40,7 @@ if (( callback )); then
   printf '%s' "${CURL_HTTP_CODE:-200}"
 else
   [[ -z "$output" ]] || printf 'fake image' >"$output"
-  printf 'image/jpeg'
+  printf '%s' "${CURL_CONTENT_TYPE:-image/jpeg}"
 fi
 EOF
   chmod +x "$TMP_DIR/bin/"*
@@ -165,6 +165,11 @@ EOF
     file_absent "$DB_DIR/marker.txt"
 
   unset CURL_FAIL
+  CURL_CONTENT_TYPE=image/heic check "rejects HEIC" 65 "Unsupported media type: image/heic" bash "$SCRIPT"
+  CURL_CONTENT_TYPE=audio/aac check "rejects AAC" 65 "Unsupported media type: audio/aac" bash "$SCRIPT"
+  check "does not publish message with unsupported media" 0 "" file_absent "$DB_DIR/users/7/inbox/200.txt"
+  check "does not advance marker on unsupported media" 0 "" file_absent "$DB_DIR/marker.txt"
+
   check "retries successfully" 0 "" bash "$SCRIPT"
   check "publishes recovered message" 0 "broken" \
     cat "$DB_DIR/users/7/inbox/200.txt"

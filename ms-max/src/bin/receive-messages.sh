@@ -190,13 +190,15 @@ main() {
         image/png*)        ext=png ;;
         image/gif*)        ext=gif ;;
         image/webp*)       ext=webp ;;
-        image/heic*)       ext=heic ;;
         audio/mpeg*)       ext=mp3 ;;
         audio/ogg*|application/ogg*) ext=ogg ;;
         audio/mp4*|audio/x-m4a*) ext=m4a ;;
-        audio/aac*)        ext=aac ;;
         audio/wav*|audio/x-wav*) ext=wav ;;
-        *)                 echo "Unsupported media type: $mime" >&2; return 65 ;;
+        *)
+          printf '[ERROR] Unsupported media type: %s (user=%s seq=%s attachment=%s)\n' \
+            "${mime:-unknown}" "$user" "$seq" "$n" >&2
+          return 65
+          ;;
       esac
 
       mv "$tmp" "$inbox/$filename.$ext"
