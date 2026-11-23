@@ -99,13 +99,13 @@ main() {
 
 log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
 
-# Message files are created outside the visible queues, then atomically renamed.
+# Message files are hidden until they are atomically renamed.
 queue_message() {
   local channel="$1" body="$2" tmp dest part
   [[ -n "$body" ]] || return 0
   # Split before queuing: HTML entities may expand the text in post-message.sh.
   while IFS= read -r -d '' part; do
-    tmp=$(mktemp "$DB_DIR/.message.XXXXXXXX")
+    tmp=$(mktemp "$DB_DIR/queue/$channel/.message.XXXXXXXX")
     printf '%s' "$part" >"$tmp"
     ((QUEUE_SEQ += 1))
     printf -v dest '%s/queue/%s/%020d-%06d-%06d.txt' "$DB_DIR" "$channel" "$(date +%s)" "$$" "$QUEUE_SEQ"

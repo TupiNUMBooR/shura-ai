@@ -188,7 +188,7 @@ main() {
       url=$(jq -r '.payload.url // empty' <<<"$attachment")
       [[ -n "$url" ]] || { echo "Missing attachment URL" >&2; return 65; }
 
-      tmp=$(mktemp)
+      tmp=$(mktemp "$inbox/.attachment.XXXXXX")
       mime=$(curl -fsSL -w '%{content_type}' -o "$tmp" "$url")
 
       case "$mime" in
@@ -221,7 +221,7 @@ main() {
   done <<<"$updates"
 
   if [[ -n "$new_marker" ]]; then
-    tmp=$(mktemp)
+    tmp=$(mktemp "$DB_DIR/.marker.XXXXXX")
     printf '%s\n' "$new_marker" >"$tmp"
     mv "$tmp" "$MARKER_FILE"
     tmp=""

@@ -74,7 +74,7 @@ main() {
 
   # Select a contiguous suffix of history. Conservative character-based
   # approximation: exact token counts are returned by OpenAI only afterward.
-  tmp="$(mktemp "$uid_dir/.request.XXXXXX")"
+  tmp="$(mktemp "$archive/.request.XXXXXX")"
   if ! build_request "$ai" >"$tmp"; then rm -f "$tmp"; error 65 'Cannot build request'; fi
   mv -f "$tmp" "$request"
 
