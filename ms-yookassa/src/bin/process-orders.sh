@@ -12,13 +12,18 @@ main() {
   [[ $# -eq 0 ]] || return 2
   [[ -f "$PRICES_FILE" ]] || { log '[ERROR] Missing credit-packages.json'; return 66; }
   [[ -d "$DB_DIR" ]] || return 0
-  local order credits rub parent uid_dir tmp response id path out message key status
+  local order credits rub return_url parent uid_dir tmp response id path out message key status
   while IFS= read -r -d '' order; do
     parent="${order%/orders/*}"
     uid_dir="${parent%/payments}"
     credits="${order##*/}"; credits="${credits%.json}"
     if [[ ! "$credits" =~ ^[1-9][0-9]*$ ]]; then rm -f -- "$order"; continue; fi
     rub=$(jq -er --argjson credits "$credits" '.packages[] | select(.credits==$credits) | .rub | select(type=="number" and .>0)' "$PRICES_FILE") || { log "[WARN] Invalid package: $order"; rm -f -- "$order"; continue; }
+    if ! return_url=$(jq -er '.return_url | select(type == "string" and length > 0)' "$order"); then
+      log "[WARN] Missing or invalid return_url, order deleted: $order"
+      rm -f -- "$order"
+      continue
+    fi
     # Keep the key stable across retries, even if the remote request timed out.
     key=$(jq -r '.idempotence_key // empty' "$order" 2>/dev/null) || key=""
     if [[ -z "$key" ]]; then
@@ -26,7 +31,7 @@ main() {
       tmp=$(mktemp "$parent/orders/.order.XXXXXX")
       if jq -c --arg key "$key" --argjson credits "$credits" '. + {credits:$credits,idempotence_key:$key}' "$order" >"$tmp"; then mv -f "$tmp" "$order"; else rm -f "$tmp"; rm -f "$order"; continue; fi
     fi
-    if response=$("$CREATE_PAYMENT" "$rub" "$key" "$credits"); then
+    if response=$("$CREATE_PAYMENT" "$rub" "$key" "$credits" "$return_url"); then
       :
     else
       status=$?
@@ -53,7 +58,8 @@ main() {
     out="$uid_dir/outbox/message_payment_$id.json"
     tmp=$(mktemp "$parent/orders/.payment.XXXXXX")
     if ! jq -nc --argjson payment "$response" --argjson credits "$credits" --argjson rub "$rub" --arg key "$key" \
-      '{credits:$credits,rub:$rub,idempotence_key:$key,yookassa:$payment}' >"$tmp"; then rm -f "$tmp"; continue; fi
+      --arg return_url "$return_url" '{credits:$credits,rub:$rub,return_url:$return_url,idempotence_key:$key,yookassa:$payment}' \
+      >"$tmp"; then rm -f "$tmp"; continue; fi
     # Keep the order available for retry until the outbox message is published.
     mv -f -- "$tmp" "$order" || return 73
     tmp=$(mktemp "$uid_dir/outbox/.payment.XXXXXX")

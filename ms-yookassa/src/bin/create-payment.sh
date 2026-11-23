@@ -7,12 +7,23 @@ set -euo pipefail
 YOOKASSA_API_URL="${YOOKASSA_API_URL:-https://api.yookassa.ru/v3}"
 
 main() (
-  [[ $# -eq 3 ]] || { echo 'Usage: create-payment.sh RUB IDEMPOTENCE_KEY CREDITS' >&2; return 2; }
-  local rub="$1" key="$2" credits="$3" response code
+  [[ $# -eq 4 ]] || { echo 'Usage: create-payment.sh RUB IDEMPOTENCE_KEY CREDITS RETURN_URL' >&2; return 2; }
+  local rub="$1" key="$2" credits="$3" return_url="$4" response code
   [[ "$rub" =~ ^[1-9][0-9]*$ && -n "$key" && "$credits" =~ ^[1-9][0-9]*$ ]] || return 2
+  if [[ ! "$return_url" =~ ^https://[^/?#[:space:]@]+([/?#][^[:space:]]*)?$ ]]; then
+    echo 'Invalid return_url: expected an HTTPS URL' >&2
+    return 65
+  fi
   response=$(mktemp)
   trap 'rm -f "$response"' EXIT
-  code=$(jq -nc --arg value "$rub" --arg credits "$credits" '{amount:{value:($value+".00"),currency:"RUB"},capture:true,confirmation:{type:"redirect",return_url:"https://max.ru"},description:($credits + " кредитов для Шуры")}' |
+  code=$(jq -nc --arg value "$rub" --arg credits "$credits" --arg return_url "$return_url" '
+    {
+      amount: {value: ($value + ".00"), currency: "RUB"},
+      capture: true,
+      confirmation: {type: "redirect", return_url: $return_url},
+      description: ($credits + " кредитов для Шуры")
+    }
+  ' |
     curl --silent --show-error --connect-timeout 10 --max-time 45 \
       --user "$YOOKASSA_SHOP_ID:$YOOKASSA_SECRET_KEY" \
       --header 'Content-Type: application/json' --header "Idempotence-Key: $key" \

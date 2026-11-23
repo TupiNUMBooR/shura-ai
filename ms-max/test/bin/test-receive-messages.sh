@@ -130,6 +130,9 @@ EOF
       "user":{"user_id":42},"payload":"buy:5000","callback_id":"cb-1"
     }}
   ]}'
+  MAX_PAYMENT_RETURN_URL= check "rejects purchase without return URL" 78 "MAX_PAYMENT_RETURN_URL" bash "$SCRIPT"
+  check "does not enqueue purchase without return URL" 0 "" file_absent "$DB_DIR/users/42/payments/orders/5000.json"
+  export MAX_PAYMENT_RETURN_URL=https://web.max.ru/829005994
   check "handles purchase and unknown command" 0 "" bash "$SCRIPT"
   check "creates buy keyboard with one callback per row" 0 "" jq -e '
     .buttons | length == 3 and all(.[]; length == 1 and .[0].type == "callback")
@@ -138,10 +141,13 @@ EOF
   check "buy shows balance" 0 "" jq -e '.text | contains("633 кредитов")' "$DB_DIR/users/42/outbox/message_buy_112.json"
   check "credits shows balance" 0 "633 кредитов" cat "$DB_DIR/users/42/outbox/114.txt"
   check "credits bypasses AI" 0 "" file_absent "$DB_DIR/users/42/inbox/114.txt"
-  check "creates one order per package" 0 "5000" jq -r '.credits' "$DB_DIR/users/42/payments/orders/5000.json"
+  check "creates order with package and return URL" 0 "" jq -e --arg url "$MAX_PAYMENT_RETURN_URL" \
+    '. == {credits:5000,return_url:$url}' "$DB_DIR/users/42/payments/orders/5000.json"
   check "rejects unknown commands without AI" 0 "Нет такой команды" cat "$DB_DIR/users/42/outbox/113.txt"
   check "unknown command not passed to inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/113.txt"
-  check "double click does not duplicate order" 0 "" bash "$SCRIPT"
+  MAX_PAYMENT_RETURN_URL=https://max.example/other check "handles repeated purchase click" 0 "" bash "$SCRIPT"
+  check "repeated purchase preserves original return URL" 0 "" jq -e --arg url "$MAX_PAYMENT_RETURN_URL" \
+    '.return_url == $url' "$DB_DIR/users/42/payments/orders/5000.json"
   export MAX_BOT_TOKEN=test CURL_HTTP_CODE=400
   check "callback shows HTTP error body" 0 "MAX callback HTTP 400: {\"error\":\"callback mock error\"}" bash "$SCRIPT"
   unset MAX_BOT_TOKEN CURL_HTTP_CODE

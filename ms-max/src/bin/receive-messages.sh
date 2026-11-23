@@ -7,6 +7,7 @@ SCRIPT_NAME="$(basename "$0")"
 # optional environment
 DB_DIR="${DB_DIR:-./db}"
 VERBOSE="${VERBOSE:-0}"
+MAX_PAYMENT_RETURN_URL="${MAX_PAYMENT_RETURN_URL:-}"
 POLL_MAX="${POLL_MAX:-$(dirname "$0")/poll.sh}"
 PRICES_FILE="$(dirname "$0")/../config/credit-packages.json"
 DEFAULT_CREDITS="$(dirname "$0")/../config/user.default/credits_received.txt"
@@ -66,12 +67,17 @@ main() {
     [[ "$payload" =~ ^buy:([0-9]+)$ ]] || continue
     credits="${BASH_REMATCH[1]}"
     rub="$(jq -er --argjson credits "$credits" '.packages[] | select(.credits == $credits) | .rub' "$PRICES_FILE")" || continue
+    if [[ ! "$MAX_PAYMENT_RETURN_URL" =~ ^https://[^/?#[:space:]@]+([/?#][^[:space:]]*)?$ ]]; then
+      echo '[ERROR] MAX_PAYMENT_RETURN_URL must be an HTTPS URL' >&2
+      return 78
+    fi
     uid_dir="$DB_DIR/users/$user"
     mkdir -p "$uid_dir"
     init_user "$uid_dir"
     mkdir -p "$uid_dir/payments/orders"
     tmp="$(mktemp "$uid_dir/payments/orders/.order.XXXXXX")"
-    jq -nc --argjson credits "$credits" '{credits:$credits}' >"$tmp"
+    jq -nc --argjson credits "$credits" --arg return_url "$MAX_PAYMENT_RETURN_URL" \
+      '{credits:$credits,return_url:$return_url}' >"$tmp"
     # A duplicate click while an order exists must not overwrite it.
     ln "$tmp" "$uid_dir/payments/orders/$credits.json" 2>/dev/null || :
     rm -f "$tmp"; tmp=""

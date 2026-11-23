@@ -17,7 +17,12 @@ while (($#)); do
     *) url="$1"; shift ;;
   esac
 done
-if (( body )); then payload=$(cat); [[ "$payload" == *'"description":"1000 кредитов для Шуры"'* ]] || exit 17; fi
+if (( body )); then
+  payload=$(cat)
+  jq -e '.description == "1000 кредитов для Шуры" and
+    .confirmation == {type:"redirect",return_url:"https://chat.example/bot?from=payment&lang=ru"}' \
+    <<<"$payload" >/dev/null || exit 17
+fi
 if [[ "${HTTP_CODE:-200}" != 200 ]]; then
   printf '%s\n' '{"type":"error","description":"test HTTP failure"}' >"$output"
   printf '%s' "$HTTP_CODE"
@@ -33,11 +38,15 @@ chmod +x "$TMP/bin/curl"
 export PATH="$TMP/bin:$PATH" YOOKASSA_SHOP_ID=test YOOKASSA_SECRET_KEY=test
 create="$ROOT/src/bin/create-payment.sh"
 get="$ROOT/src/bin/get-payment.sh"
-result="$(bash "$create" 19 unique-order 1000)"
+return_url='https://chat.example/bot?from=payment&lang=ru'
+result="$(bash "$create" 19 unique-order 1000 "$return_url")"
 [[ "$(jq -r .id <<<"$result")" == pay-123 ]]
 result="$(bash "$get" pay-123)"
 [[ "$(jq -r .status <<<"$result")" == succeeded ]]
-if HTTP_CODE=400 bash "$create" 19 unique-order 1000 >"$TMP/stdout" 2>"$TMP/stderr"; then exit 1; else
+if bash "$create" 19 unique-order 1000 'http://chat.example/bot' >"$TMP/stdout" 2>"$TMP/stderr"; then exit 1; else
+  [[ $? == 65 ]] && grep -q 'Invalid return_url' "$TMP/stderr"
+fi
+if HTTP_CODE=400 bash "$create" 19 unique-order 1000 "$return_url" >"$TMP/stdout" 2>"$TMP/stderr"; then exit 1; else
   [[ $? == 65 ]] && grep -q 'test HTTP failure' "$TMP/stderr"
 fi
 if HTTP_CODE=500 bash "$get" pay-123 >"$TMP/stdout" 2>"$TMP/stderr"; then exit 1; else
