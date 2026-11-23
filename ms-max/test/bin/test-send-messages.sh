@@ -196,15 +196,46 @@ EOF_TYPING
   check "removes empty message" 0 "" \
     file_absent "$DB_DIR/users/42/outbox/empty.txt"
 
-  # Universal YooKassa payment JSON becomes a MAX link button only at transport time.
+  # The adapter wraps universal buttons in a MAX keyboard and preserves rows.
   reset_sender
-  cat >"$DB_DIR/users/42/outbox/payment_test-123.json" <<'EOF_PAYMENT'
-{"credits":5000,"rub":79,"yookassa":{"id":"test-123","confirmation":{"confirmation_url":"https://pay.example/test-123"}}}
-EOF_PAYMENT
-  check "sends universal payment as MAX button" 0 "Sent to 42" "$SCRIPT"
+  cat >"$DB_DIR/users/42/outbox/message_test.json" <<'EOF_MESSAGE'
+{
+  "text": "Choose an action",
+  "buttons": [
+    [
+      {"type": "callback", "text": "Buy 1000", "payload": "buy:1000"},
+      {"type": "callback", "text": "Buy 5000", "payload": "buy:5000"}
+    ],
+    [{"type": "link", "text": "Terms", "url": "https://pay.example/terms"}]
+  ]
+}
+EOF_MESSAGE
+  check "sends universal message" 0 "Sent to 42" "$SCRIPT"
   check "passes JSON flag to sender" 0 "--json" cat "$POST_CALLS_FILE"
-  check "converts payment URL to link button" 0 "" jq -e '.attachments[0].payload.buttons[0][0].url == "https://pay.example/test-123"' "$POST_BODIES_FILE"
-  check "removes delivered payment event" 0 "" file_absent "$DB_DIR/users/42/outbox/payment_test-123.json"
+  check "converts button rows to a MAX keyboard" 0 "" jq -e '
+    .text == "Choose an action" and .attachments[0].type == "inline_keyboard"
+    and .attachments[0].payload.buttons == [
+      [
+        {"type": "callback", "text": "Buy 1000", "payload": "buy:1000"},
+        {"type": "callback", "text": "Buy 5000", "payload": "buy:5000"}
+      ],
+      [{"type": "link", "text": "Terms", "url": "https://pay.example/terms"}]
+    ]
+  ' "$POST_BODIES_FILE"
+  check "removes delivered JSON message" 0 "" file_absent "$DB_DIR/users/42/outbox/message_test.json"
+
+  reset_sender
+  printf '%s\n' '{"text":"Hello"}' >"$DB_DIR/users/42/outbox/message_text.json"
+  check "sends JSON message without buttons" 0 "Sent to 42" "$SCRIPT"
+  check "omits keyboard for a message without buttons" 0 "" \
+    jq -e '. == {"text":"Hello","attachments":[]}' "$POST_BODIES_FILE"
+
+  reset_sender
+  printf '%s\n' '{"text":"Broken","buttons":[[{"type":"link","text":"Open","url":"http://example.org"}]]}' \
+    >"$DB_DIR/users/42/outbox/message_invalid.json"
+  check "moves invalid JSON message out of the queue" 0 "Invalid outbox message" "$SCRIPT"
+  check "does not send invalid JSON message" 0 "" file_empty "$POST_CALLS_FILE"
+  check "preserves invalid JSON message" 0 "" test -f "$DB_DIR/users/42/outbox-failed/message_invalid.json"
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))

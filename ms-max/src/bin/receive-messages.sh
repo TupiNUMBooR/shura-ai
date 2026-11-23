@@ -139,11 +139,16 @@ main() {
         balance=$(balance_of "$uid_dir") || { echo "Invalid user credits: $user" >&2; return 65; }
         tmp="$(mktemp "$uid_dir/outbox/.buy.XXXXXX")"
         jq -n --arg balance "$balance" --slurpfile prices "$PRICES_FILE" '
-          {text:("Пополнить баланс 💜\n\nТвой баланс: " + $balance + " кредитов\n\nВыбери пакет кредитов:"),
-           attachments:[{type:"inline_keyboard",payload:{buttons:
-             [$prices[0].packages[] | [{type:"callback",text:((.credits|tostring)+" кредитов · "+(.rub|tostring)+" ₽"),payload:("buy:"+(.credits|tostring))}]]}}]}
+          {
+            text: ("Пополнить баланс 💜\n\nТвой баланс: " + $balance + " кредитов\n\nВыбери пакет кредитов:"),
+            buttons: [$prices[0].packages[] | [{
+              type: "callback",
+              text: "\(.credits) кредитов · \(.rub) ₽",
+              payload: "buy:\(.credits)"
+            }]]
+          }
         ' >"$tmp"
-        mv -- "$tmp" "$uid_dir/outbox/buy_${seq}.json"
+        mv -- "$tmp" "$uid_dir/outbox/message_buy_${seq}.json"
         tmp=""
         continue
         ;;

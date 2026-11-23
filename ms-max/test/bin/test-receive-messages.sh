@@ -131,8 +131,11 @@ EOF
     }}
   ]}'
   check "handles purchase and unknown command" 0 "" bash "$SCRIPT"
-  check "creates buy keyboard" 0 "" jq -e '.attachments[0].payload.buttons | length == 3' "$DB_DIR/users/42/outbox/buy_112.json"
-  check "buy shows balance" 0 "" jq -e '.text | contains("633 кредитов")' "$DB_DIR/users/42/outbox/buy_112.json"
+  check "creates buy keyboard with one callback per row" 0 "" jq -e '
+    .buttons | length == 3 and all(.[]; length == 1 and .[0].type == "callback")
+    and .[1][0].payload == "buy:5000"
+  ' "$DB_DIR/users/42/outbox/message_buy_112.json"
+  check "buy shows balance" 0 "" jq -e '.text | contains("633 кредитов")' "$DB_DIR/users/42/outbox/message_buy_112.json"
   check "credits shows balance" 0 "633 кредитов" cat "$DB_DIR/users/42/outbox/114.txt"
   check "credits bypasses AI" 0 "" file_absent "$DB_DIR/users/42/inbox/114.txt"
   check "creates one order per package" 0 "5000" jq -r '.credits' "$DB_DIR/users/42/payments/orders/5000.json"

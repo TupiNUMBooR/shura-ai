@@ -40,7 +40,12 @@ assert test ! -e "$DB_DIR/max/users/42/payments/orders/5000.json"
 assert test ! -e "$DB_DIR/telegram/users/7/payments/orders/1000.json"
 file=$(find "$DB_DIR/max/users/42/payments/processing" -name '*.json' | head -1)
 assert test -f "$file"
-assert test -f "$DB_DIR/max/users/42/outbox/payment_$(basename "$file")"
+assert jq -e --arg url "https://pay.example/$(basename "${file%.json}")" '
+  . == {
+    text: "Оплата 5000 кредитов за 79 ₽",
+    buttons: [[{type: "link", text: "Оплатить", url: $url}]]
+  }
+' "$DB_DIR/max/users/42/outbox/message_payment_$(basename "$file")" >/dev/null
 assert jq -e --arg key "$key" '.idempotence_key==$key and .credits==5000 and .rub==79 and .yookassa.merchant_metadata.keep=="all fields"' "$file" >/dev/null
 PAYMENT_STATUS=pending bash "$poll"
 assert test -f "$file"

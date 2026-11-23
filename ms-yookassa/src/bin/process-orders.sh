@@ -12,7 +12,7 @@ main() {
   [[ $# -eq 0 ]] || return 2
   [[ -f "$PRICES_FILE" ]] || { log '[ERROR] Missing credit-packages.json'; return 66; }
   [[ -d "$DB_DIR" ]] || return 0
-  local order credits rub parent uid_dir tmp response id path out key status
+  local order credits rub parent uid_dir tmp response id path out message key status
   while IFS= read -r -d '' order; do
     parent="${order%/orders/*}"
     uid_dir="${parent%/payments}"
@@ -40,16 +40,24 @@ main() {
     fi
     id=$(jq -r '.id' <<<"$response")
     [[ "$id" =~ ^[a-zA-Z0-9-]+$ ]] || { log '[WARN] Invalid payment ID'; continue; }
+    if ! message=$(jq -ce --arg text "Оплата $credits кредитов за $rub ₽" '
+      .confirmation.confirmation_url
+      | select(type == "string" and startswith("https://"))
+      | {text: $text, buttons: [[{type: "link", text: "Оплатить", url: .}]]}
+    ' <<<"$response"); then
+      log "[WARN] Invalid payment URL: $id"
+      continue
+    fi
     mkdir -p "$parent/processing" "$uid_dir/outbox"
     path="$parent/processing/$id.json"
-    out="$uid_dir/outbox/payment_$id.json"
+    out="$uid_dir/outbox/message_payment_$id.json"
     tmp=$(mktemp "$parent/orders/.payment.XXXXXX")
     if ! jq -nc --argjson payment "$response" --argjson credits "$credits" --argjson rub "$rub" --arg key "$key" \
       '{credits:$credits,rub:$rub,idempotence_key:$key,yookassa:$payment}' >"$tmp"; then rm -f "$tmp"; continue; fi
-    # Rename order to payment ID; outbox contains an independent copy.
+    # Keep the order available for retry until the outbox message is published.
     mv -f -- "$tmp" "$order" || return 73
     tmp=$(mktemp "$uid_dir/outbox/.payment.XXXXXX")
-    cp -- "$order" "$tmp" || { rm -f "$tmp"; return 73; }
+    printf '%s\n' "$message" >"$tmp" || { rm -f "$tmp"; return 73; }
     mv -f -- "$tmp" "$out" || return 73
     mv -f -- "$order" "$path" || return 73
     log "Created payment $id: $credits credits, $rub RUB"

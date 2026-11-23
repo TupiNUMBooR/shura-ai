@@ -30,7 +30,8 @@ main() {
       file=$(find "$DB_DIR/users" -ignore_readdir_race -type f -path '*/outbox/*.txt' | LC_ALL=C sort | head -n 1)
       action=message
       if [[ -z "$file" ]]; then
-        file=$(find "$DB_DIR/users" -ignore_readdir_race -type f -path '*/outbox/*.json' | LC_ALL=C sort | head -n 1)
+        file=$(find "$DB_DIR/users" -ignore_readdir_race -type f -path '*/outbox/message_*.json' |
+          LC_ALL=C sort | head -n 1)
         action=json
       fi
     fi
@@ -56,17 +57,30 @@ process_action() {
 
   if [[ "$action" == json ]]; then
     local payload
-    if [[ "${file##*/}" == payment_* ]]; then
-      payload=$(jq -ce '
-        . as $p | ($p.yookassa.confirmation.confirmation_url // $p.confirmation_url) as $url |
-        select(($url | type) == "string" and ($url | startswith("https://"))) |
-        {text:("Оплата " + ($p.credits|tostring) + " кредитов за " + ($p.rub|tostring) + " ₽"),
-         attachments:[{type:"inline_keyboard",payload:{buttons:[[ {type:"link",text:"Оплатить",url:$url} ]]}}]}
-      ' "$file") || error 65 "Invalid payment: $file"
-    else
-      payload="$(cat "$file")"
+    if ! payload=$(jq -ces '
+      select(length == 1) | .[0]
+      | select(type == "object" and (.text | type == "string" and length > 0))
+      | (if has("buttons") then .buttons else [] end) as $buttons
+      | select($buttons | type == "array" and all(.[];
+          type == "array" and length > 0 and all(.[];
+            type == "object" and (.text | type == "string" and length > 0)
+            and (
+              (.type == "callback" and (.payload | type == "string"))
+              or (.type == "link" and (.url | type == "string" and startswith("https://")))
+            )
+          )
+        ))
+      | {
+          text,
+          attachments: (if ($buttons | length) == 0 then []
+                        else [{type: "inline_keyboard", payload: {buttons: $buttons}}]
+                        end)
+        }
+    ' "$file"); then
+      log "[WARN] Invalid outbox message: $file"
     fi
-    if [[ "$uid" =~ ^[0-9]+$ && -n "$chat_id" ]] && printf '%s\n' "$payload" | "$POST_MESSAGE" --json "$chat_id" >/dev/null; then
+    if [[ -n "$payload" && "$uid" =~ ^[0-9]+$ && -n "$chat_id" ]] &&
+      printf '%s\n' "$payload" | "$POST_MESSAGE" --json "$chat_id" >/dev/null; then
       rm -f -- "$file"
       log "Sent to $uid"
     else
