@@ -126,15 +126,15 @@ main() {
         [[ ! -e "$uid_dir/outbox/$seq.txt" ]] || continue
         balance=$(balance_of "$uid_dir") || { echo "Invalid user credits: $user" >&2; return 65; }
         tmp=$(mktemp "$uid_dir/outbox/.help.XXXXXX")
-        printf 'Привет! Я Шура 💜\n\nТвоя ИИ-помощница. Могу отвечать на вопросы, разбирать задачи и помогать с идеями.\n\nБаланс: %s кредитов\n\n/start или /help — справка\n/buy — купить кредиты\n/credits — мой баланс\n/reset — очистить историю\n' "$balance" >"$tmp"
+        printf 'Привет! Я Шура 💜\n\nТвоя ИИ-помощница. Могу отвечать на вопросы, разбирать задачи и помогать с идеями.\n\nБаланс: %s кредитов\n\n/start или /help — справка\n/buy — купить кредиты\n/balance — мой баланс\n/reset — очистить историю\n' "$balance" >"$tmp"
         mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
         tmp=""
         continue
         ;;
-      /credits)
+      /balance)
         mkdir -p "$uid_dir/outbox"
         balance=$(balance_of "$uid_dir") || { echo "Invalid user credits: $user" >&2; return 65; }
-        tmp=$(mktemp "$uid_dir/outbox/.credits.XXXXXX")
+        tmp=$(mktemp "$uid_dir/outbox/.balance.XXXXXX")
         printf '💜 Твой баланс: %s кредитов\n' "$balance" >"$tmp"
         mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
         tmp=""

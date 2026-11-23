@@ -99,7 +99,7 @@ EOF
   check "commands counted separately from text" 0 "Received: 2m 2c" bash "$SCRIPT"
   check "start includes balance" 0 "Баланс: 633 кредитов" cat "$DB_DIR/users/42/outbox/110.txt"
   check "help includes commands" 0 "/reset — очистить историю" cat "$DB_DIR/users/42/outbox/111.txt"
-  check "help advertises credits" 0 "/credits — мой баланс" cat "$DB_DIR/users/42/outbox/111.txt"
+  check "help advertises balance" 0 "/balance — мой баланс" cat "$DB_DIR/users/42/outbox/111.txt"
   check "start bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/110.txt"
   check "help bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/111.txt"
 
@@ -124,7 +124,7 @@ EOF
     }},
     {"update_type":"message_created","message":{
       "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
-      "body":{"seq":114,"text":"/credits","attachments":[]}
+      "body":{"seq":114,"text":"/balance","attachments":[]}
     }},
     {"update_type":"message_callback","callback":{
       "user":{"user_id":42},"payload":"buy:5000","callback_id":"cb-1"
@@ -139,8 +139,8 @@ EOF
     and .[1][0].payload == "buy:5000"
   ' "$DB_DIR/users/42/outbox/message_buy_112.json"
   check "buy shows balance" 0 "" jq -e '.text | contains("633 кредитов")' "$DB_DIR/users/42/outbox/message_buy_112.json"
-  check "credits shows balance" 0 "633 кредитов" cat "$DB_DIR/users/42/outbox/114.txt"
-  check "credits bypasses AI" 0 "" file_absent "$DB_DIR/users/42/inbox/114.txt"
+  check "balance shows remaining credits" 0 "633 кредитов" cat "$DB_DIR/users/42/outbox/114.txt"
+  check "balance bypasses AI" 0 "" file_absent "$DB_DIR/users/42/inbox/114.txt"
   check "creates order with package and return URL" 0 "" jq -e --arg url "$MAX_PAYMENT_RETURN_URL" \
     '. == {credits:5000,return_url:$url}' "$DB_DIR/users/42/payments/orders/5000.json"
   check "rejects unknown commands without AI" 0 "Нет такой команды" cat "$DB_DIR/users/42/outbox/113.txt"
