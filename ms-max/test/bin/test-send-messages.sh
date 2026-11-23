@@ -12,7 +12,7 @@ FAIL=0
 TMP_DIR=""
 
 main() {
-  need_commands bash cat chmod cmp date find head jq mkdir mktemp mv rm sort tr wc
+  need_commands bash basename cat chmod cmp cp date jq mkdir mktemp mv rm sleep tee tr wc
   resolve_script
 
   TMP_DIR="$(mktemp -d)"
@@ -69,18 +69,26 @@ EOF_TYPING
   check "handles missing users directory" 0 "" "$SCRIPT"
 
   mkdir -p "$DB_DIR/users"
-  check "does nothing when outbox is empty" 0 "" "$SCRIPT"
+  cat >"$TMP_DIR/bin/sleep" <<'EOF_SLEEP'
+#!/usr/bin/env bash
+printf '%s\n' "$1" >"$SLEEP_CALLS_FILE"
+EOF_SLEEP
+  chmod +x "$TMP_DIR/bin/sleep"
+  export SLEEP_CALLS_FILE="$TMP_DIR/sleep-calls"
+  PATH="$TMP_DIR/bin:$PATH" check "does nothing when outbox is empty" 0 "" "$SCRIPT"
+  check "waits 250 ms on an empty queue" 0 "0.25" cat "$SLEEP_CALLS_FILE"
   check "does not call sender for empty outbox" 0 "" \
     file_empty "$POST_CALLS_FILE"
 
   mkdir -p "$DB_DIR/users/42/outbox" "$DB_DIR/users/7/outbox"
   printf '%s\n' '-42' >"$DB_DIR/users/42/max_chat_id.txt"
   printf '%s\n' '-7' >"$DB_DIR/users/7/max_chat_id.txt"
-  : >"$DB_DIR/users/42/outbox/seen_100"
+  : >"$DB_DIR/users/7/outbox/seen_100"
   : >"$DB_DIR/users/42/outbox/typing"
-  check "dispatches seen before messages" 0 "" "$SCRIPT"
-  check "uses chat ID for seen" 0 "-42" cat "$ACTION_CALLS_FILE"
-  check "deletes seen event" 0 "" file_absent "$DB_DIR/users/42/outbox/seen_100"
+  printf 'first message\n' >"$DB_DIR/users/42/outbox/001.txt"
+  check "prioritizes seen across users" 0 "" "$SCRIPT"
+  check "uses chat ID of the selected user" 0 "-7" cat "$ACTION_CALLS_FILE"
+  check "deletes seen event" 0 "" file_absent "$DB_DIR/users/7/outbox/seen_100"
   check "dispatches typing before messages" 0 "" "$SCRIPT"
   check "uses chat ID for typing" 0 "typing:-42" cat "$ACTION_CALLS_FILE"
   check "deletes typing event" 0 "" file_absent "$DB_DIR/users/42/outbox/typing"
@@ -90,7 +98,6 @@ EOF_TYPING
   check "deletes failed seen event" 0 "" file_absent "$DB_DIR/users/42/outbox/seen_101"
   unset ACTION_FAIL
 
-  printf 'first message\n' >"$DB_DIR/users/42/outbox/001.txt"
   printf 'second message\n' >"$DB_DIR/users/42/outbox/002.txt"
   printf 'later message\n' >"$DB_DIR/users/7/outbox/001.txt"
 
@@ -236,6 +243,26 @@ EOF_MESSAGE
   check "moves invalid JSON message out of the queue" 0 "Invalid outbox message" "$SCRIPT"
   check "does not send invalid JSON message" 0 "" file_empty "$POST_CALLS_FILE"
   check "preserves invalid JSON message" 0 "" test -f "$DB_DIR/users/42/outbox-failed/message_invalid.json"
+
+  reset_sender
+  mkdir -p "$DB_DIR/users/42/outbox/subdir" "$DB_DIR/users/42/archive/outbox"
+  printf 'still being written\n' >"$DB_DIR/users/42/outbox/.draft.txt"
+  printf 'nested file\n' >"$DB_DIR/users/42/outbox/subdir/nested.txt"
+  printf 'archived file\n' >"$DB_DIR/users/42/archive/outbox/old.txt"
+  printf 'unsupported\n' >"$DB_DIR/users/7/outbox/unknown.bin"
+  printf 'ready\n' >"$DB_DIR/users/42/outbox/ready.txt"
+  check "warns about unknown files and sends ready messages" 0 "Unknown outbox file type" "$SCRIPT"
+  check "preserves unknown file in its owner's failed queue" 0 "unsupported" \
+    cat "$DB_DIR/users/7/outbox-failed/unknown.bin"
+  check "logs unknown file to its owner" 0 "[WARN] Unknown outbox file type" cat "$DB_DIR/users/7/log.txt"
+  check "sends only the ready message" 0 "" test "$(<"$POST_BODIES_FILE")" = ready
+  check "leaves hidden files alone" 0 "" test -f "$DB_DIR/users/42/outbox/.draft.txt"
+  check "leaves nested files alone" 0 "" test -f "$DB_DIR/users/42/outbox/subdir/nested.txt"
+  check "leaves outboxes outside the user queue alone" 0 "" test -f "$DB_DIR/users/42/archive/outbox/old.txt"
+
+  printf 'invalid marker\n' >"$DB_DIR/users/42/outbox/typing"
+  check "warns about a nonempty control marker" 0 "Expected an empty typing marker" "$SCRIPT"
+  check "preserves invalid marker in failed queue" 0 "" test -f "$DB_DIR/users/42/outbox-failed/typing"
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))

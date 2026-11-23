@@ -13,30 +13,46 @@ TYPING="${TYPING:-$(dirname "${BASH_SOURCE[0]}")/typing.sh}"
 main() {
   [[ $# -eq 0 ]] || error 2 "Unexpected arguments"
 
-  local file uid uid_dir chat_id action
+  local LC_ALL=C
+  local file uid_dir action rejected=0
+  local -A queued=()
 
-  [[ -d "$DB_DIR/users" ]] || return 0
-
-  # Control events first; ordinary messages only when no actions are pending.
-  file=$(find "$DB_DIR/users" -ignore_readdir_race -type f \
-    \( -path '*/outbox/seen' -o -path '*/outbox/seen_*' \) | LC_ALL=C sort | head -n 1)
-  if [[ -n "$file" ]]; then
-    action=seen
-  else
-    file=$(find "$DB_DIR/users" -ignore_readdir_race -type f -path '*/outbox/typing' | LC_ALL=C sort | head -n 1)
-    if [[ -n "$file" ]]; then
-      action=typing
-    else
-      file=$(find "$DB_DIR/users" -ignore_readdir_race -type f -path '*/outbox/*.txt' | LC_ALL=C sort | head -n 1)
-      action=message
-      if [[ -z "$file" ]]; then
-        file=$(find "$DB_DIR/users" -ignore_readdir_race -type f -path '*/outbox/message_*.json' |
-          LC_ALL=C sort | head -n 1)
-        action=json
-      fi
+  # The glob yields paths in order. Keep the first ready file of each type.
+  for file in "$DB_DIR"/users/*/outbox/*; do
+    [[ -f "$file" && ! -L "$file" ]] || continue
+    uid_dir="${file%/outbox/*}"
+    [[ ! -L "$uid_dir" && ! -L "$uid_dir/outbox" ]] || continue
+    case "${file##*/}" in
+      .*) continue ;;
+      seen|seen_*) action=seen ;;
+      typing) action=typing ;;
+      *.txt) action=message ;;
+      message_*.json) action=json ;;
+      *)
+        move_failed "$file" "$uid_dir" 'Unknown outbox file type' 2>&1 |
+          tee -a "$uid_dir/log.txt" >&2
+        rejected=1
+        continue
+        ;;
+    esac
+    if [[ -z "${queued[$action]-}" ]]; then
+      queued[$action]="$file"
     fi
-  fi
-  [[ -n "$file" && -f "$file" ]] || return 0
+  done
+
+  for action in seen typing message json; do
+    file="${queued[$action]-}"
+    if [[ -f "$file" ]]; then
+      dispatch "$file" "$action"
+      return
+    fi
+  done
+
+  (( rejected )) || sleep 0.25
+}
+
+dispatch() {
+  local file="$1" action="$2" uid_dir uid chat_id
 
   uid_dir="${file%/outbox/*}"
   uid="${uid_dir##*/}"
@@ -77,21 +93,24 @@ process_action() {
                         end)
         }
     ' "$file"); then
-      log "[WARN] Invalid outbox message: $file"
+      move_failed "$file" "$uid_dir" 'Invalid outbox message'
+      return
     fi
     if [[ -n "$payload" && "$uid" =~ ^[0-9]+$ && -n "$chat_id" ]] &&
       printf '%s\n' "$payload" | "$POST_MESSAGE" --json "$chat_id" >/dev/null; then
       rm -f -- "$file"
       log "Sent to $uid"
     else
-      mkdir -p "$uid_dir/outbox-failed"
-      mv -- "$file" "$uid_dir/outbox-failed/"
-      log "[WARN] Failed to send to $uid (moved to outbox-failed)"
+      move_failed "$file" "$uid_dir" "Failed to send to $uid"
     fi
     return 0
   fi
 
   if [[ "$action" != message ]]; then
+    if [[ -s "$file" ]]; then
+      move_failed "$file" "$uid_dir" "Expected an empty $action marker"
+      return
+    fi
     if [[ -n "$chat_id" ]]; then
       if [[ "$action" == seen ]]; then
         "$MARK_SEEN" "$chat_id" || :
@@ -123,7 +142,7 @@ process_action() {
         if jq -j '.part' <<< "$chunk" |
            "$POST_MESSAGE" "$chat_id" > /dev/null; then
           sent=1
-          tmp=$(mktemp "$file.XXXXXX")
+          tmp=$(mktemp "$uid_dir/outbox/.part.XXXXXX")
           jq -j '.rest' <<< "$chunk" > "$tmp"
           mv -- "$tmp" "$file" || error 73 "Cannot update $file"
           log "Sent to $uid"
@@ -133,10 +152,7 @@ process_action() {
       done
 
       if (( ! sent )); then
-        mkdir -p "$uid_dir/outbox-failed"
-        mv -- "$file" "$uid_dir/outbox-failed/" \
-          || error 73 "Cannot move failed message: $file"
-        log "[WARN] Failed to send to $uid (moved to outbox-failed)"
+        move_failed "$file" "$uid_dir" "Failed to send to $uid"
         return 0
       fi
     done
@@ -145,11 +161,15 @@ process_action() {
     return 0
   fi
 
+  move_failed "$file" "$uid_dir" "Invalid recipient for $uid"
+}
+
+move_failed() {
+  local file="$1" uid_dir="$2" reason="$3"
   mkdir -p "$uid_dir/outbox-failed"
   mv -- "$file" "$uid_dir/outbox-failed/" \
     || error 73 "Cannot move failed message: $file"
-
-  log "[WARN] Failed to send to $uid (moved to outbox-failed)"
+  log "[WARN] $reason: $file (moved to outbox-failed)"
 }
 
 # region functions
