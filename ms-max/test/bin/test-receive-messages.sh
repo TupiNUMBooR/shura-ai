@@ -81,6 +81,27 @@ EOF
   check "does not create seen from incoming message" 0 "" \
     file_absent "$DB_DIR/users/42/outbox/seen_100"
 
+  export POLL_RESPONSE='{"marker":11,"updates":[
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":102,"attachments":[{"type":"file"}]}
+    }},
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":103,"text":" \t\n"}
+    }},
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":104,"attachments":[{"type":"image","payload":{"url":"https://example.com/photo"}}]}
+    }}
+  ]}'
+  CURL_FAIL=0 check "accepts a batch with empty messages" 0 "" bash "$SCRIPT"
+  check "ignores a file without text" 0 "" file_absent "$DB_DIR/users/42/inbox/102.txt"
+  check "ignores whitespace without attachments" 0 "" file_absent "$DB_DIR/users/42/inbox/103.txt"
+  check "preserves an image without text" 0 "fake image" cat "$DB_DIR/users/42/inbox/104.01.jpg"
+  check "publishes the marker for an image without text" 0 "" test -f "$DB_DIR/users/42/inbox/104.txt"
+  check "advances the poll marker past empty messages" 0 "11" cat "$DB_DIR/marker.txt"
+
   rm -rf "$DB_DIR"
   mkdir -p "$DB_DIR/users/42"
   printf '2500\n' >"$DB_DIR/users/42/credits_received.txt"

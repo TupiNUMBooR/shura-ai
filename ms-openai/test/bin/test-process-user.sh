@@ -24,6 +24,17 @@ main() {
   check "rejects invalid credit multiplier" 65 "Invalid CREDITS_PER_USD" \
     env CREDITS_PER_USD=0 "$SCRIPT" "$TMP_DIR/invalid-config"
 
+  setup_user empty
+  : >"$USER_DIR/inbox/001.txt"
+  printf ' \t\n' >"$USER_DIR/inbox/002.txt"
+  check "processes empty inbox markers without calling OpenAI" 0 "" \
+    env POST_RESPONSES="$TMP_DIR/post-responses" REQUEST_CAPTURE="$TMP_DIR/empty-request.json" \
+      "$SCRIPT" "$USER_DIR"
+  check "empty input produces no request" 0 "" test ! -e "$TMP_DIR/empty-request.json"
+  check "empty input spends no credits" 0 "" test ! -e "$USER_DIR/credits_spent.txt"
+  assert_empty_dir "$USER_DIR/inbox" "consumes empty inbox markers"
+  assert_empty_dir "$USER_DIR/ai" "empty input produces no history entries"
+
   setup_user funded
   printf 'user prompt' >"$USER_DIR/inbox/pending.txt"
   check "posts request and charges credits" 0 'AI 000001 completed: 1 credits, $0.000001' \

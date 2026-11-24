@@ -23,6 +23,7 @@ main() {
 
   local marker="" response new_marker updates update
   local user seq chat_id uid_dir inbox attachment type url ext mime n filename message_count command balance payload credits rub callback_id
+  local has_attachment
 
   [[ ! -f "$MARKER_FILE" ]] || marker=$(<"$MARKER_FILE")
   response=$("$POLL_MAX" ${marker:+"$marker"})
@@ -180,6 +181,7 @@ main() {
     esac
 
     n=0
+    has_attachment=0
     while IFS= read -r attachment; do
       ((n+=1))
       type=$(jq -r '.type' <<<"$attachment")
@@ -188,6 +190,7 @@ main() {
         image|audio) ;;
         *) continue ;;
       esac
+      has_attachment=1
 
       printf -v filename '%s.%02d' "$seq" "$n"
 
@@ -221,6 +224,8 @@ main() {
       mv "$tmp" "$inbox/$filename.$ext"
       tmp=""
     done < <(jq -c '.message.body.attachments[]?' <<<"$update")
+
+    if (( ! has_attachment )) && [[ ! "$command" =~ [^[:space:]] ]]; then continue; fi
 
     # Publish the message only after all attachments.
     tmp=$(mktemp "$inbox/.message.XXXXXX")

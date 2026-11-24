@@ -41,7 +41,7 @@ main() {
     # The text file is the message marker. All other files with this ID are attachments.
     mapfile -d '' -t attachments < <(find "$inbox" -maxdepth 1 -type f -name "$id.*" ! -name "$id.txt" -print0 | sort -z)
     text="$(cat "$txt")"
-    [[ -z "$text" ]] || ((texts += 1))
+    [[ ! "$text" =~ [^[:space:]] ]] || ((texts += 1))
     content='[]'
     audio_records=()
 
@@ -78,6 +78,11 @@ main() {
         *) error 65 "Unsupported attachment: $file" ;;
       esac
     done
+
+    if [[ ! "$text" =~ [^[:space:]] && "$content" == '[]' ]]; then
+      rm -f -- "$txt" "${attachments[@]}"
+      continue
+    fi
 
     # Preserve string content for text-only messages.
     if [[ "$content" == '[]' ]]; then
