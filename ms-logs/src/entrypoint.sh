@@ -11,7 +11,6 @@ SCRIPT_NAME="$(basename "$0")"
 
 # optional environment
 VERSION="${VERSION:-dev}"
-DB_DIR="${DB_DIR:-/db}"
 LOG_BATCH_SECONDS="${LOG_BATCH_SECONDS:-60}"
 INCIDENT_DELAY_SECONDS="${INCIDENT_DELAY_SECONDS:-1}"
 SEND_RETRY_SECONDS="${SEND_RETRY_SECONDS:-3}"
@@ -20,7 +19,7 @@ LOG_MAX_CHARS="${LOG_MAX_CHARS:-3500}"
 CONTEXT_BEFORE_LINES="${CONTEXT_BEFORE_LINES:-10}"
 POST_MESSAGE="${POST_MESSAGE:-/app/bin/post-message.sh}"
 
-FIFO=""
+WORK_DIR=""
 SELF_ID=""
 PROJECT_NAME=""
 STARTED_AT=""
@@ -46,14 +45,13 @@ main() {
   (( LOG_BATCH_SECONDS > 0 && INCIDENT_DELAY_SECONDS > 0 && SEND_RETRY_SECONDS > 0 && CONTAINER_SCAN_SECONDS > 0 && LOG_MAX_CHARS >= 100 && CONTEXT_BEFORE_LINES > 0 )) || return 78
   [[ -x "$POST_MESSAGE" ]] || { printf 'post-message.sh not executable\n' >&2; return 78; }
 
-  mkdir -p "$DB_DIR/queue/debug" "$DB_DIR/queue/error"
-  local fifo_dir
-  fifo_dir=$(mktemp -d "${TMPDIR:-/tmp}/ms-logs.XXXXXX")
-  FIFO="$fifo_dir/stream"
-  mkfifo "$FIFO"
-  exec 3<>"$FIFO"
-  rm -f "$FIFO"
-  rmdir "$fifo_dir"
+  WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/ms-logs.XXXXXX")
+  trap 'rm -rf -- "$WORK_DIR"' EXIT
+  mkdir -p "$WORK_DIR/queue/debug" "$WORK_DIR/queue/error"
+  local fifo="$WORK_DIR/stream"
+  mkfifo "$fifo"
+  exec 3<>"$fifo"
+  rm -f -- "$fifo"
 
   SELF_ID=$(docker inspect --format '{{.Id}}' "${HOSTNAME:-}" 2>/dev/null) || { log 'Cannot inspect own container'; return 1; }
   PROJECT_NAME=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$SELF_ID" 2>/dev/null) || return 1
@@ -105,10 +103,10 @@ queue_message() {
   [[ -n "$body" ]] || return 0
   # Split before queuing: HTML entities may expand the text in post-message.sh.
   while IFS= read -r -d '' part; do
-    tmp=$(mktemp "$DB_DIR/queue/$channel/.message.XXXXXXXX")
+    tmp=$(mktemp "$WORK_DIR/queue/$channel/.message.XXXXXXXX")
     printf '%s' "$part" >"$tmp"
     ((QUEUE_SEQ += 1))
-    printf -v dest '%s/queue/%s/%020d-%06d-%06d.txt' "$DB_DIR" "$channel" "$(date +%s)" "$$" "$QUEUE_SEQ"
+    printf -v dest '%s/queue/%s/%020d-%06d-%06d.txt' "$WORK_DIR" "$channel" "$(date +%s)" "$$" "$QUEUE_SEQ"
     mv -- "$tmp" "$dest"
   done < <(printf '%s' "$body" | jq -Rsrj --argjson limit "$((LOG_MAX_CHARS - 11))" '
     def width: if . == "&" then 5 elif . == "<" or . == ">" then 4 else 1 end;
@@ -191,7 +189,7 @@ handle_line() {
     fi
 
     if [[ -z "$INCIDENT_FILE" && -n "$severity" ]]; then
-      INCIDENT_FILE=$(mktemp "$DB_DIR/.incident.XXXXXXXX")
+      INCIDENT_FILE=$(mktemp "$WORK_DIR/.incident.XXXXXXXX")
       for context in "${RING[@]}"; do printf '%s\n' "$context" >>"$INCIDENT_FILE"; done
       INCIDENT_DEADLINE=$(( ${EPOCHREALTIME/./} + INCIDENT_DELAY_SECONDS * 1000000 ))
       INCIDENT_LEVEL="$severity"
@@ -239,7 +237,7 @@ watch_new_containers() {
 send_queue() {
   local channel="$1" chat_id="$2" file
   while :; do
-    file=$(find "$DB_DIR/queue/$channel" -maxdepth 1 -type f -name '*.txt' 2>/dev/null | sort | head -n 1) || true
+    file=$(find "$WORK_DIR/queue/$channel" -maxdepth 1 -type f -name '*.txt' 2>/dev/null | sort | head -n 1) || true
     if [[ -z "$file" ]]; then
       sleep "$SEND_RETRY_SECONDS"
       continue
@@ -258,10 +256,6 @@ shutdown() {
   STOPPING=1
   trap - TERM INT
   log "Stopped VERSION=$VERSION"
-  # Capture the shutdown line even if Docker's log driver hasn't flushed it yet.
-  append_debug "[${NAMES[$SELF_ID]:-ms-logs}] [$(date -u +%FT%TZ)] [entrypoint.sh] Stopped VERSION=$VERSION"
-  flush_incident
-  flush_debug
   local pid
   for pid in "${CHILD_PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
   wait 2>/dev/null || true

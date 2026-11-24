@@ -14,8 +14,6 @@ RUN bash /repo/test/run-tests.sh
 
 RUN cp -r /repo/src/. /app/
 
-ENV DB_DIR=/db
-
 ARG VERSION=dev
 ENV VERSION=$VERSION
 
