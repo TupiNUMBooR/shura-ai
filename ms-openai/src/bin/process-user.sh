@@ -36,7 +36,7 @@ main() {
   mkdir -p "$ai" "$archive" "$outbox"
 
   if compgen -G "$uid_dir/inbox/[0-9]*.reset" >/dev/null; then
-    "$RESET_DIALOG" "$uid_dir"
+    reset_dialog "$uid_dir"
     return 0
   fi
 
@@ -53,7 +53,7 @@ main() {
     (( ${#incoming[@]} > 0 )) || return 0
 
     if compgen -G "$uid_dir/inbox/[0-9]*.reset" >/dev/null; then
-      "$RESET_DIALOG" "$uid_dir"
+      reset_dialog "$uid_dir"
       return 0
     fi
 
@@ -76,7 +76,7 @@ main() {
     "$PROCESS_INBOX" "$uid_dir"
   fi
   if compgen -G "$uid_dir/inbox/[0-9]*.reset" >/dev/null; then
-    "$RESET_DIALOG" "$uid_dir"
+    reset_dialog "$uid_dir"
     return 0
   fi
 
@@ -100,7 +100,7 @@ main() {
   tmp="$(mktemp "$archive/.response.XXXXXX")"
   if compgen -G "$uid_dir/inbox/[0-9]*.reset" >/dev/null; then
     rm -f -- "$tmp" "$request"
-    "$RESET_DIALOG" "$uid_dir"
+    reset_dialog "$uid_dir"
     return 0
   fi
   # Tell the messenger the AI is generating a response.
@@ -143,6 +143,15 @@ main() {
     write_outbox "$outbox" "$NO_CREDITS_MESSAGE"
   fi
   log "AI ${number} completed: ${credits} credits, \$${total_usd}"
+}
+
+reset_dialog() {
+  local uid_dir="$1" seq_file="$1/reset_seq.txt" previous_seq=""
+  [[ ! -f "$seq_file" ]] || previous_seq="$(<"$seq_file")"
+  "$RESET_DIALOG" "$uid_dir"
+  if [[ -f "$seq_file" && "$(<"$seq_file")" != "$previous_seq" ]]; then
+    log "Dialog reset for user ${uid_dir##*/}"
+  fi
 }
 
 build_request() {
