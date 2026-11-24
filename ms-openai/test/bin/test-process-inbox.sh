@@ -20,6 +20,14 @@ main() {
   check "requires UID_DIR argument" 2 "Usage:" env "$SCRIPT"
   check "requires inbox directory" 66 "Inbox not found" env "$SCRIPT" "$TMP_DIR/missing"
 
+  setup_user pending_reset
+  printf 'before reset\n' >"$USER_DIR/inbox/009.txt"
+  : >"$USER_DIR/inbox/010.reset"
+  check "stops at a pending reset" 0 "" env "$SCRIPT" "$USER_DIR"
+  assert_file_exists "$USER_DIR/inbox/010.reset" "leaves the reset marker in inbox"
+  assert_file_exists "$USER_DIR/inbox/009.txt" "leaves the queued message in inbox"
+  assert_no_files "$USER_DIR/ai" "leaves dialog history empty"
+
   setup_user text
   printf 'hello Shura\n' >"$USER_DIR/inbox/001.txt"
   check "processes text message into user history" 0 "User user-text completed: 1m 1t, inbox/ 001, ai/ 000001" \

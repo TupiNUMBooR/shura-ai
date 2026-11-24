@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# reset-dialog.sh - Apply the latest pending reset for one user.
-#
-# process-inbox.sh stops when it sees a marker and leaves it in place.
-# process-user.sh then calls this script and ends the current pass.
-# Exit 0 means the marker was handled. Other statuses are errors.
+# Handle the latest reset marker in UID_DIR/inbox.
+# For a new reset, clear dialog history and queue a confirmation.
+# Exit 0 once the marker is handled.
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
