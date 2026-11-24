@@ -7,7 +7,7 @@ SCRIPT_NAME="$(basename "$0")"
 # required environment
 : "${MAX_BOT_TOKEN:?}"
 : "${MAX_DEBUG_CHAT_ID:?}"
-: "${MAX_ERROR_CHAT_ID:?}"
+: "${MAX_ALERT_CHAT_ID:?}"
 
 # optional environment
 VERSION="${VERSION:-dev}"
@@ -47,7 +47,7 @@ main() {
 
   WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/ms-logs.XXXXXX")
   trap 'rm -rf -- "$WORK_DIR"' EXIT
-  mkdir -p "$WORK_DIR/queue/debug" "$WORK_DIR/queue/error"
+  mkdir -p "$WORK_DIR/queue/debug" "$WORK_DIR/queue/error" "$WORK_DIR/queue/success"
   local fifo="$WORK_DIR/stream"
   mkfifo "$fifo"
   exec 3<>"$fifo"
@@ -59,9 +59,10 @@ main() {
   STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   send_queue debug "$MAX_DEBUG_CHAT_ID" & CHILD_PIDS+=("$!")
-  send_queue error "$MAX_ERROR_CHAT_ID" & CHILD_PIDS+=("$!")
+  send_queue error "$MAX_ALERT_CHAT_ID" & CHILD_PIDS+=("$!")
+  send_queue success "$MAX_ALERT_CHAT_ID" & CHILD_PIDS+=("$!")
   trap shutdown TERM INT
-  log "Started VERSION=$VERSION"
+  alert_lifecycle "Started VERSION=$VERSION"
 
   local next_scan=0 now_us id line
   while :; do
@@ -96,6 +97,15 @@ main() {
 # region functions
 
 log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
+
+alert_lifecycle() {
+  local line
+  line=$(log "$1" 2>&1)
+  printf '%s\n' "$line" >&2
+  # The alert must have time to finish before Docker stops the container.
+  timeout -k 1 5 "$POST_MESSAGE" "$MAX_ALERT_CHAT_ID" <<<"[ms-logs] $line" >/dev/null ||
+    log 'Could not send lifecycle alert'
+}
 
 # Message files are hidden until they are atomically renamed.
 queue_message() {
@@ -182,7 +192,9 @@ handle_line() {
 
   # Never alert on our own logs, but include them in DEBUG.
   if [[ "$id" != "$SELF_ID" ]]; then
-    if [[ "$line" =~ (^|[^[:alnum:]_])([Ee][Rr][Rr][Oo][Rr]|[Ee][Rr][Rr]|[Ff][Aa][Tt][Aa][Ll]|[Cc][Rr][Ii][Tt][Ii][Cc][Aa][Ll]|[Pp][Aa][Nn][Ii][Cc]|[Ee][Xx][Cc][Ee][Pp][Tt][Ii][Oo][Nn]|[Tt][Rr][Aa][Cc][Ee][Bb][Aa][Cc][Kk]|[Ff][Aa][Ii][Ll][Ee][Dd]|[Ff][Aa][Ii][Ll][Uu][Rr][Ee])([^[:alnum:]_]|$) ]]; then
+    if [[ "$line" == *'[SUCCESS]'* ]]; then
+      queue_message success "$formatted"
+    elif [[ "$line" =~ (^|[^[:alnum:]_])([Ee][Rr][Rr][Oo][Rr]|[Ee][Rr][Rr]|[Ff][Aa][Tt][Aa][Ll]|[Cc][Rr][Ii][Tt][Ii][Cc][Aa][Ll]|[Pp][Aa][Nn][Ii][Cc]|[Ee][Xx][Cc][Ee][Pp][Tt][Ii][Oo][Nn]|[Tt][Rr][Aa][Cc][Ee][Bb][Aa][Cc][Kk]|[Ff][Aa][Ii][Ll][Ee][Dd]|[Ff][Aa][Ii][Ll][Uu][Rr][Ee])([^[:alnum:]_]|$) ]]; then
       severity=ERROR
     elif [[ "$line" =~ (^|[^[:alnum:]_])([Ww][Aa][Rr][Nn]|[Ww][Aa][Rr][Nn][Ii][Nn][Gg]|[Dd][Ee][Pp][Rr][Ee][Cc][Aa][Tt][Ee][Dd])([^[:alnum:]_]|$) ]]; then
       severity=WARN
@@ -255,7 +267,7 @@ shutdown() {
   (( STOPPING == 0 )) || return
   STOPPING=1
   trap - TERM INT
-  log "Stopped VERSION=$VERSION"
+  alert_lifecycle "Stopped VERSION=$VERSION"
   local pid
   for pid in "${CHILD_PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
   wait 2>/dev/null || true

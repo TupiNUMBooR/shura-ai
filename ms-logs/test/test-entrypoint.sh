@@ -2,12 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-export MAX_BOT_TOKEN=test MAX_DEBUG_CHAT_ID=123 MAX_ERROR_CHAT_ID=456
+export MAX_BOT_TOKEN=test MAX_DEBUG_CHAT_ID=123 MAX_ALERT_CHAT_ID=456
 # shellcheck source=/dev/null
 source "$ROOT/src/entrypoint.sh"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$WORK_DIR"' EXIT
-mkdir -p "$WORK_DIR/queue/debug" "$WORK_DIR/queue/error"
+mkdir -p "$WORK_DIR/queue/debug" "$WORK_DIR/queue/error" "$WORK_DIR/queue/success"
 SELF_ID=self
 NAMES[self]=ms-logs
 NAMES[other]=ms-max
@@ -43,6 +43,22 @@ handle_line other 'FATAL big failure'
 [[ "$INCIDENT_LEVEL" == ERROR ]]
 flush_incident
 
+handle_line self '[SUCCESS] self event'
+handle_line other 'SUCCESS without brackets'
+handle_line other '[success] lowercase tag'
+handle_line other '[OK] unrelated tag'
+handle_line other 'INFO before success'
+handle_line other '[SUCCESS] first event'
+success_files=("$WORK_DIR"/queue/success/*.txt)
+[[ ${#success_files[@]} == 1 && -f "${success_files[0]}" ]]
+[[ $(cat "${success_files[0]}") == '[ms-max] [SUCCESS] first event' ]]
+handle_line other '[SUCCESS] second event after a failed attempt'
+handle_line other 'INFO after success'
+success_files=("$WORK_DIR"/queue/success/*.txt)
+[[ ${#success_files[@]} == 2 ]]
+[[ $(cat "${success_files[1]}") == '[ms-max] [SUCCESS] second event after a failed attempt' ]]
+[[ -z "$INCIDENT_FILE" && "$INCIDENT_DEADLINE" == 0 ]]
+
 LOG_MAX_CHARS=150
 handle_line other "INFO $(printf '%0500d' 0)"
 flush_debug
@@ -55,4 +71,25 @@ for file in "$WORK_DIR"/queue/debug/*.txt; do
   encoded=$(jq -Rs '"<pre>" + (gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;")) + "</pre>" | length' <"$file")
   (( encoded <= 3500 ))
 done
-printf 'ok - global incident context, self filtering, severity and queues\n' 
+printf 'ok - global incident context, self filtering, severity and success queue\n'
+
+export ALERT_CAPTURE="$WORK_DIR/lifecycle.log"
+POST_MESSAGE="$WORK_DIR/post-message"
+cat >"$POST_MESSAGE" <<'EOF_POST'
+#!/usr/bin/env bash
+set -euo pipefail
+IFS= read -r message
+printf '%s %s\n' "$1" "$message" >>"$ALERT_CAPTURE"
+exit "${POST_STATUS:-0}"
+EOF_POST
+chmod +x "$POST_MESSAGE"
+
+alert_lifecycle "Started VERSION=$VERSION" 2>"$WORK_DIR/start.stderr"
+( shutdown ) 2>"$WORK_DIR/stop.stderr"
+mapfile -t alerts <"$ALERT_CAPTURE"
+[[ ${#alerts[@]} == 2 ]]
+[[ "${alerts[0]}" == "456 [ms-logs] $(cat "$WORK_DIR/start.stderr")" && "${alerts[0]}" == *"Started VERSION=$VERSION" ]]
+[[ "${alerts[1]}" == "456 [ms-logs] $(cat "$WORK_DIR/stop.stderr")" && "${alerts[1]}" == *"Stopped VERSION=$VERSION" ]]
+POST_STATUS=1 alert_lifecycle "Started VERSION=$VERSION" 2>"$WORK_DIR/failed.stderr"
+grep -Fq 'Could not send lifecycle alert' "$WORK_DIR/failed.stderr"
+printf 'ok - startup and shutdown alerts\n'

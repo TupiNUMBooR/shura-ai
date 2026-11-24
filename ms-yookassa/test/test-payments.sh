@@ -60,7 +60,8 @@ PAYMENT_STATUS=pending bash "$poll"
 assert test -f "$file"
 GET_FAIL=69 bash "$poll" >/dev/null 2>&1
 assert test -f "$file"
-PAYMENT_STATUS=succeeded bash "$poll" >/dev/null
+PAYMENT_STATUS=succeeded bash "$poll" >/dev/null 2>"$TMP/success.log"
+assert grep -Fq "[SUCCESS] Completed $(basename "${file%.json}"): +5000 credits, 79 RUB, user=42" "$TMP/success.log"
 assert test ! -e "$file"
 assert test -f "$DB_DIR/max/users/42/payments/completed/$(basename "$file")"
 assert test -f "$DB_DIR/max/users/42/outbox/$(basename "${file%.json}").txt"

@@ -9,7 +9,7 @@ log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
 main() {
   [[ $# -eq 0 ]] || return 2
   [[ -d "$DB_DIR" ]] || return 0
-  local file parent uid_dir id result status credits previous spent balance tmp message
+  local file parent uid_dir id result status credits rub previous spent balance tmp message
   while IFS= read -r -d '' file; do
     parent="${file%/processing/*}"
     uid_dir="${parent%/payments}"
@@ -25,6 +25,7 @@ main() {
     if jq -c --argjson payment "$result" '.yookassa = $payment' "$file" >"$tmp"; then mv -f "$tmp" "$file"; else rm -f "$tmp"; continue; fi
     if [[ "$status" == succeeded ]]; then
       credits=$(jq -er '.credits | select(type=="number" and .>0)' "$file") || continue
+      rub=$(jq -r '.rub // .yookassa.amount.value // "unknown"' "$file")
       previous=0
       [[ ! -f "$uid_dir/credits_received.txt" ]] || previous=$(<"$uid_dir/credits_received.txt")
       [[ "$previous" =~ ^[0-9]+$ ]] || { log "[WARN] Invalid credits: $uid_dir"; continue; }
@@ -39,7 +40,7 @@ main() {
       tmp=$(mktemp "$uid_dir/outbox/.payment.XXXXXX")
       printf 'Платёж успешно завершён! 💜\n\nНачислено: %s кредитов\nТвой баланс: %s кредитов\n' "$credits" "$balance" >"$tmp"
       mv -f "$tmp" "$uid_dir/outbox/$id.txt"
-      log "Completed $id: +$credits credits"
+      log "[SUCCESS] Completed $id: +$credits credits, $rub RUB, user=${uid_dir##*/}"
     else
       mkdir -p "$parent/failed"
       mv -f -- "$file" "$parent/failed/$id.json"
