@@ -2,8 +2,11 @@
 services:
 
   ms-max:
-    build: ./ms-max
-    image: shura-ms-max:local
+    build:
+      context: ./ms-max
+      args:
+        VERSION: "${VERSION:-dev}"
+    image: shura-ms-max:${VERSION:-dev}
     user: "${USER_ID:-0}:${GROUP_ID:-0}"
     env_file:
       - .env
@@ -12,8 +15,11 @@ services:
     restart: unless-stopped
 
   ms-openai:
-    build: ./ms-openai
-    image: shura-ms-openai:local
+    build:
+      context: ./ms-openai
+      args:
+        VERSION: "${VERSION:-dev}"
+    image: shura-ms-openai:${VERSION:-dev}
     user: "${USER_ID:-0}:${GROUP_ID:-0}"
     environment:
       CREDITS_PER_USD: 100000
@@ -26,8 +32,11 @@ services:
     restart: unless-stopped
 
   ms-logs:
-    build: ./ms-logs
-    image: shura-ms-logs:local
+    build:
+      context: ./ms-logs
+      args:
+        VERSION: "${VERSION:-dev}"
+    image: shura-ms-logs:${VERSION:-dev}
     env_file:
       - .env
     environment:
@@ -39,8 +48,11 @@ services:
     restart: unless-stopped
 
   ms-yookassa:
-    build: ./ms-yookassa
-    image: shura-ms-yookassa:local
+    build:
+      context: ./ms-yookassa
+      args:
+        VERSION: "${VERSION:-dev}"
+    image: shura-ms-yookassa:${VERSION:-dev}
     user: "${USER_ID:-0}:${GROUP_ID:-0}"
     env_file:
       - .env

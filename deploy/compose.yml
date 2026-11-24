@@ -1,0 +1,49 @@
+# compose.yml
+services:
+
+  ms-max:
+    image: shura-ms-max:${VERSION:-latest}
+    pull_policy: never
+    user: "${USER_ID:-0}:${GROUP_ID:-0}"
+    env_file:
+      - .env
+    volumes:
+      - ./db/max:/db
+    restart: unless-stopped
+
+  ms-openai:
+    image: shura-ms-openai:${VERSION:-latest}
+    pull_policy: never
+    user: "${USER_ID:-0}:${GROUP_ID:-0}"
+    environment:
+      CREDITS_PER_USD: 100000
+      SHOW_CREDITS: "true"
+      SHOW_TRANSCRIPTION: "true"
+    env_file:
+      - .env
+    volumes:
+      - ./db:/db
+    restart: unless-stopped
+
+  ms-logs:
+    image: shura-ms-logs:${VERSION:-latest}
+    pull_policy: never
+    env_file:
+      - .env
+    environment:
+      LOG_BATCH_SECONDS: 60
+      CONTEXT_BEFORE_LINES: 10
+      INCIDENT_DELAY_SECONDS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+  ms-yookassa:
+    image: shura-ms-yookassa:${VERSION:-latest}
+    pull_policy: never
+    user: "${USER_ID:-0}:${GROUP_ID:-0}"
+    env_file:
+      - .env
+    volumes:
+      - ./db:/db
+    restart: unless-stopped
