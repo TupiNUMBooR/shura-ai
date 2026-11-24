@@ -103,9 +103,17 @@ main() {
     reset_dialog "$uid_dir"
     return 0
   fi
-  # Tell the messenger the AI is generating a response.
-  : >"$outbox/typing"
-  if ! "$POST_RESPONSES" <"$request" >"$tmp"; then
+  local typing_marker="$outbox/typing" typing_parent="$BASHPID" typing_pid request_failed=0
+  : >"$typing_marker"
+  repeat_typing "$typing_parent" "$typing_marker" &
+  typing_pid=$!
+  trap 'stop_typing "$typing_pid" "$typing_marker"' EXIT
+  trap 'exit 143' TERM
+  trap 'exit 130' INT
+  "$POST_RESPONSES" <"$request" >"$tmp" || request_failed=1
+  stop_typing "$typing_pid" "$typing_marker"
+  trap - EXIT TERM INT
+  if (( request_failed )); then
     rm -f "$tmp"
     error 70 'OpenAI request failed'
   fi
@@ -143,6 +151,25 @@ main() {
     write_outbox "$outbox" "$NO_CREDITS_MESSAGE"
   fi
   log "AI ${number} completed: ${credits} credits, \$${total_usd}"
+}
+
+repeat_typing() {
+  local parent_pid="$1" marker="$2" sleep_pid=""
+  # Waiting for a background sleep lets Bash handle TERM immediately.
+  trap 'kill "$sleep_pid" 2>/dev/null || :; wait "$sleep_pid" 2>/dev/null || :; exit 0' TERM
+  while true; do
+    sleep 3 &
+    sleep_pid=$!
+    wait "$sleep_pid"
+    kill -0 "$parent_pid" 2>/dev/null || return 0
+    : >"$marker"
+  done
+}
+
+stop_typing() {
+  kill "$1" 2>/dev/null || :
+  wait "$1" 2>/dev/null || :
+  rm -f -- "$2"
 }
 
 reset_dialog() {

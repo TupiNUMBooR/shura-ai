@@ -54,6 +54,7 @@ exit "${ACTION_FAIL:-0}"
 EOF_MARK
   cat >"$TMP_DIR/bin/typing" <<'EOF_TYPING'
 #!/usr/bin/env bash
+[[ ! -e "$TYPING_MARKER" ]] || exit 1
 printf 'typing:%s\n' "$1" >>"$ACTION_CALLS_FILE"
 exit "${ACTION_FAIL:-0}"
 EOF_TYPING
@@ -89,8 +90,9 @@ EOF_SLEEP
   check "prioritizes seen across users" 0 "" "$SCRIPT"
   check "uses chat ID of the selected user" 0 "-7" cat "$ACTION_CALLS_FILE"
   check "deletes seen event" 0 "" file_absent "$DB_DIR/users/7/outbox/seen_100"
-  check "dispatches typing before messages" 0 "" "$SCRIPT"
-  check "uses chat ID for typing" 0 "typing:-42" cat "$ACTION_CALLS_FILE"
+  TYPING_MARKER="$DB_DIR/users/42/outbox/typing" \
+    check "dispatches typing before messages" 0 "" "$SCRIPT"
+  check "calls typing with the chat ID after removing the marker" 0 "typing:-42" cat "$ACTION_CALLS_FILE"
   check "deletes typing event" 0 "" file_absent "$DB_DIR/users/42/outbox/typing"
   export ACTION_FAIL=1
   : >"$DB_DIR/users/42/outbox/seen_101"

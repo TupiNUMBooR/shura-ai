@@ -111,12 +111,13 @@ process_action() {
       move_failed "$file" "$uid_dir" "Expected an empty $action marker"
       return
     fi
+    if [[ "$action" == typing ]]; then
+      rm -f -- "$file"
+      if [[ -n "$chat_id" ]]; then "$TYPING" "$chat_id" || :; fi
+      return 0
+    fi
     if [[ -n "$chat_id" ]]; then
-      if [[ "$action" == seen ]]; then
-        "$MARK_SEEN" "$chat_id" || :
-      else
-        "$TYPING" "$chat_id" || :
-      fi
+      "$MARK_SEEN" "$chat_id" || :
     fi
     rm -f -- "$file"
     return 0

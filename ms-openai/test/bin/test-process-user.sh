@@ -11,7 +11,7 @@ FAIL=0
 TMP_DIR=""
 
 main() {
-  need_commands env jq mktemp mkdir chmod rm cat grep find
+  need_commands env jq mktemp mkdir chmod rm cat grep find sleep
   resolve_script
   TMP_DIR="$(mktemp -d)"
   trap 'rm -rf -- "$TMP_DIR"' EXIT
@@ -30,15 +30,22 @@ main() {
     env \
       PROCESS_INBOX="$TMP_DIR/process-inbox" POST_RESPONSES="$TMP_DIR/post-responses" \
       CALCULATE_TEXT_COST="$TMP_DIR/text-cost" REQUEST_CAPTURE="$TMP_DIR/request.json" \
+      TYPING_MARKER="$USER_DIR/outbox/typing" \
       "$SCRIPT" "$USER_DIR"
   assert_json "$TMP_DIR/request.json" '.model == "gpt-6-luna"' "includes agent model"
   assert_file_contains "$TMP_DIR/request.json" 'hello from user' "includes user history"
   assert_file_contains "$USER_DIR/outbox" 'the answer' "writes assistant text to outbox"
-  [[ -f "$USER_DIR/outbox/typing" ]] || { echo "not ok - creates typing"; ((FAIL += 1)); }
-  [[ ! -f "$USER_DIR/outbox/typing" ]] || { echo "ok - creates typing"; ((PASS += 1)); }
+  check "removes typing after the response" 0 "" test ! -e "$USER_DIR/outbox/typing"
   assert_file_contains "$USER_DIR/ai/000001_a.json" 'the answer' "saves assistant history"
   assert_json "$USER_DIR"/archive/*_operation.json '.credits == 1' "archives operation with charged credits"
   assert_file_contains "$USER_DIR/credits_spent.txt" "1" "updates user credit balance"
+
+  setup_user request_failed
+  printf 'user prompt' >"$USER_DIR/inbox/pending.txt"
+  check "reports failed request" 70 'OpenAI request failed' \
+    env PROCESS_INBOX="$TMP_DIR/process-inbox" POST_RESPONSES="$TMP_DIR/post-responses" \
+      REQUEST_CAPTURE="$TMP_DIR/failed-request.json" FAIL_REQUEST=1 "$SCRIPT" "$USER_DIR"
+  check "removes typing after a failed request" 0 "" test ! -e "$USER_DIR/outbox/typing"
 
   setup_user visible_credits
   printf 'user prompt' >"$USER_DIR/inbox/pending.txt"
@@ -102,6 +109,16 @@ EOF_PROCESS_INBOX
 #!/usr/bin/env bash
 set -euo pipefail
 cat >"$REQUEST_CAPTURE"
+if [[ -n "${TYPING_MARKER:-}" ]]; then
+  [[ -f "$TYPING_MARKER" ]]
+  rm -- "$TYPING_MARKER"
+  for ((attempt = 0; attempt < 60; attempt++)); do
+    [[ ! -f "$TYPING_MARKER" ]] || break
+    sleep 0.1
+  done
+  [[ -f "$TYPING_MARKER" ]]
+fi
+[[ "${FAIL_REQUEST:-0}" == 0 ]]
 printf '%s\n' '{"status":"completed","model":"test-model","usage":{"input_tokens":1,"output_tokens":1},"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"the answer"}]}]}'
 EOF_POST_RESPONSES
   cat >"$TMP_DIR/text-cost" <<'EOF_TEXT_COST'
