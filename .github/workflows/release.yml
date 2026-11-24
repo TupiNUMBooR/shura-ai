@@ -23,6 +23,7 @@ jobs:
           - ms-max
           - ms-openai
           - ms-logs
+          - ms-yookassa
 
     steps:
       - name: Checkout
