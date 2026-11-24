@@ -4,7 +4,6 @@ set -euo pipefail
 
 SCRIPT_NAME="${0##*/}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/reset-dialog.bash"
 
 # optional environment
 TRANSCRIBE="${TRANSCRIBE:-$SCRIPT_DIR/transcribe.sh}"
@@ -26,10 +25,7 @@ main() {
 
   while true; do
     id="$(find "$inbox" -maxdepth 1 -type f -name '*.txt' -printf '%f\n' | LC_ALL=C sort -n | sed -n '1p')"
-    if reset_pending "$uid_dir"; then
-      apply_reset "$uid_dir"
-      exit "$RESET_APPLIED"
-    fi
+    if compgen -G "$inbox/[0-9]*.reset" >/dev/null; then return 0; fi
     [[ -n "$id" ]] || break
     txt="$inbox/$id"
     id="${id%.txt}"
@@ -50,10 +46,7 @@ main() {
     audio_records=()
 
     for file in "${attachments[@]}"; do
-      if reset_pending "$uid_dir"; then
-        apply_reset "$uid_dir"
-        exit "$RESET_APPLIED"
-      fi
+      if compgen -G "$inbox/[0-9]*.reset" >/dev/null; then return 0; fi
       ext="${file##*.}"
       ext="${ext,,}"
       case "$ext" in

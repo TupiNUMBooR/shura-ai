@@ -1,25 +1,30 @@
-# Shared by the inbox worker and the response worker.
-RESET_APPLIED=10
+#!/usr/bin/env bash
+# reset-dialog.sh - Apply the latest pending reset for one user.
+#
+# process-inbox.sh stops when it sees a marker and leaves it in place.
+# process-user.sh then calls this script and ends the current pass.
+# Exit 0 means the marker was handled. Other statuses are errors.
+set -euo pipefail
 
-reset_pending() {
-  local file seq latest=0
-  reset_marker=
-  for file in "$1"/inbox/*.reset; do
-    [[ -f "$file" && ${file##*/} =~ ^[0-9]+\.reset$ ]] || continue
-    seq="${file##*/}"
-    seq="${seq%.reset}"
-    if (( 10#$seq > latest )); then
-      latest=$((10#$seq))
-      reset_marker="$file"
+SCRIPT_NAME="$(basename "$0")"
+
+main() {
+  [[ $# -eq 1 ]] || error 2 "Usage: $SCRIPT_NAME UID_DIR"
+  local uid_dir="$1" marker="" file name seq tmp cutoff=0 previous=0
+  [[ -d "$uid_dir/inbox" ]] || error 66 "Inbox not found: $uid_dir/inbox"
+
+  for file in "$uid_dir"/inbox/*.reset; do
+    [[ -f "$file" ]] || continue
+    name="${file##*/}"
+    [[ "$name" =~ ^([0-9]+)\.reset$ ]] || continue
+    seq=$((10#${BASH_REMATCH[1]}))
+    if [[ -z "$marker" ]] || (( seq > cutoff )); then
+      cutoff="$seq"
+      marker="$file"
     fi
   done
-  [[ -n "$reset_marker" ]]
-}
+  [[ -n "$marker" ]] || error 66 "Reset marker not found: $uid_dir/inbox"
 
-apply_reset() {
-  local uid_dir="$1" marker="$reset_marker" file name seq tmp
-  local cutoff="${marker##*/}" previous=0
-  cutoff="${cutoff%.reset}"
   if [[ -f "$uid_dir/reset_seq.txt" ]]; then
     previous="$(<"$uid_dir/reset_seq.txt")"
   fi
@@ -46,6 +51,8 @@ apply_reset() {
   rm -f -- "$marker"
 }
 
+# region functions
+
 write_outbox() {
   local dir="$1" value="$2" tmp dest base file suffix=0 number
   tmp="$(mktemp "$dir/.out.XXXXXX")"
@@ -61,3 +68,14 @@ write_outbox() {
   printf -v dest '%s/%s-%06d.txt' "$dir" "$base" "$suffix"
   mv -f -- "$tmp" "$dest"
 }
+
+error() {
+  local code="$1"
+  shift
+  printf '[%s] [%s] [ERROR] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2
+  exit "$code"
+}
+
+# endregion
+
+main "$@"

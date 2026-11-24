@@ -11,9 +11,9 @@ set -euo pipefail
 
 SCRIPT_NAME="${0##*/}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/reset-dialog.bash"
 
 # optional environment
+RESET_DIALOG="${RESET_DIALOG:-$SCRIPT_DIR/reset-dialog.sh}"
 PROCESS_INBOX="${PROCESS_INBOX:-$SCRIPT_DIR/process-inbox.sh}"
 POST_RESPONSES="${POST_RESPONSES:-$SCRIPT_DIR/post-responses.sh}"
 CALCULATE_TEXT_COST="${CALCULATE_TEXT_COST:-$SCRIPT_DIR/calculate-text-cost.sh}"
@@ -35,7 +35,10 @@ main() {
   [[ "$CONTEXT_TOKENS" =~ ^[0-9]+$ ]] && (( CONTEXT_TOKENS > 0 )) || error 65 "Invalid CONTEXT_TOKENS"
   mkdir -p "$ai" "$archive" "$outbox"
 
-  if reset_pending "$uid_dir"; then apply_reset "$uid_dir"; return 0; fi
+  if compgen -G "$uid_dir/inbox/[0-9]*.reset" >/dev/null; then
+    "$RESET_DIALOG" "$uid_dir"
+    return 0
+  fi
 
   balance="$(balance_of "$uid_dir")" || error 65 "Invalid user credits"
 
@@ -49,7 +52,10 @@ main() {
     shopt -u nullglob
     (( ${#incoming[@]} > 0 )) || return 0
 
-    if reset_pending "$uid_dir"; then apply_reset "$uid_dir"; return 0; fi
+    if compgen -G "$uid_dir/inbox/[0-9]*.reset" >/dev/null; then
+      "$RESET_DIALOG" "$uid_dir"
+      return 0
+    fi
 
     if jq -ne --argjson balance "$balance" '$balance <= 0' >/dev/null; then
       mkdir -p "$delayed"
@@ -67,12 +73,12 @@ main() {
         mv -n -- "${delayed_files[@]}" "$uid_dir/inbox/"
       fi
     fi
-    local inbox_status=0
-    "$PROCESS_INBOX" "$uid_dir" || inbox_status=$?
-    if (( inbox_status == RESET_APPLIED )); then return 0; fi
-    if (( inbox_status != 0 )); then return "$inbox_status"; fi
+    "$PROCESS_INBOX" "$uid_dir"
   fi
-  if reset_pending "$uid_dir"; then apply_reset "$uid_dir"; return 0; fi
+  if compgen -G "$uid_dir/inbox/[0-9]*.reset" >/dev/null; then
+    "$RESET_DIALOG" "$uid_dir"
+    return 0
+  fi
 
   last="$(last_history "$ai")"
   [[ "$last" == *_u.json ]] || return 0
@@ -92,9 +98,9 @@ main() {
 
   # post-responses.sh receives the request JSON on stdin and returns response JSON on stdout.
   tmp="$(mktemp "$archive/.response.XXXXXX")"
-  if reset_pending "$uid_dir"; then
+  if compgen -G "$uid_dir/inbox/[0-9]*.reset" >/dev/null; then
     rm -f -- "$tmp" "$request"
-    apply_reset "$uid_dir"
+    "$RESET_DIALOG" "$uid_dir"
     return 0
   fi
   # Tell the messenger the AI is generating a response.
@@ -191,6 +197,22 @@ timestamp() {
     [[ ! -e "$1/${name}_responses_request.json" && ! -e "$1/${name}_operation.json" ]] && { printf '%s\n' "$name"; return; }
     sleep 0.01
   done
+}
+
+write_outbox() {
+  local dir="$1" value="$2" tmp dest base file suffix=0 number
+  tmp="$(mktemp "$dir/.out.XXXXXX")"
+  printf '%s\n' "$value" >"$tmp"
+  base="$EPOCHREALTIME"
+  base="${base/./}"
+  base="${base:0:${#base}-3}"
+  for file in "$dir/$base"-*.txt; do
+    [[ ${file##*/} =~ ^[0-9]+-([0-9]{6})\.txt$ ]] || continue
+    number=$((10#${BASH_REMATCH[1]} + 1))
+    if (( number > suffix )); then suffix="$number"; fi
+  done
+  printf -v dest '%s/%s-%06d.txt' "$dir" "$base" "$suffix"
+  mv -f -- "$tmp" "$dest"
 }
 
 write_json() {
