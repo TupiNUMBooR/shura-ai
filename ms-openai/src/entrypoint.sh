@@ -31,6 +31,7 @@ needs_processing() {
   local dir="$1" latest
 
   # A new inbox message triggers processing; delayed messages alone do not.
+  compgen -G "$dir/inbox/*.reset" >/dev/null && return 0
   compgen -G "$dir/inbox/*.txt" >/dev/null && return 0
 
   # A generated user history entry without a matching assistant entry.

@@ -117,6 +117,12 @@ main() {
       mv -f -- "$tmp" "$uid_dir/max_chat_id.txt"
       tmp=""
     fi
+    # A retried poll can include updates from before an applied reset.
+    if [[ -f "$uid_dir/reset_seq.txt" ]]; then
+      local reset_seq
+      reset_seq="$(<"$uid_dir/reset_seq.txt")"
+      (( 10#$seq > 10#$reset_seq )) || continue
+    fi
     [[ ! -f "$inbox/$seq.txt" ]] || continue
 
     command=$(jq -r '.message.body.text // ""' <<<"$update")
@@ -126,7 +132,7 @@ main() {
         [[ ! -e "$uid_dir/outbox/$seq.txt" ]] || continue
         balance=$(balance_of "$uid_dir") || { echo "Invalid user credits: $user" >&2; return 65; }
         tmp=$(mktemp "$uid_dir/outbox/.help.XXXXXX")
-        printf 'Привет! Я Шура 💜\n\nТвоя ИИ-помощница. Могу отвечать на вопросы, разбирать задачи и помогать с идеями.\n\nБаланс: %s кредитов\n\n/start или /help — справка\n/buy — купить кредиты\n/balance — мой баланс\n/reset — очистить историю\n' "$balance" >"$tmp"
+        printf 'Привет! Я Шура 💜\n\nТвоя ИИ-помощница. Могу отвечать на вопросы, разбирать задачи и помогать с идеями.\n\nБаланс: %s кредитов\n\n/start или /help — справка\n/buy — купить кредиты\n/balance — мой баланс\n/reset — начать новый диалог\n' "$balance" >"$tmp"
         mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
         tmp=""
         continue
@@ -156,6 +162,11 @@ main() {
         ' >"$tmp"
         mv -- "$tmp" "$uid_dir/outbox/message_buy_${seq}.json"
         tmp=""
+        continue
+        ;;
+      /reset)
+        # The receive loop publishes messages in seq order.
+        : >"$inbox/$seq.reset"
         continue
         ;;
       /*)

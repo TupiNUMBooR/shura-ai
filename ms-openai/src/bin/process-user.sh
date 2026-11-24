@@ -11,6 +11,7 @@ set -euo pipefail
 
 SCRIPT_NAME="${0##*/}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/reset-dialog.bash"
 
 # optional environment
 PROCESS_INBOX="${PROCESS_INBOX:-$SCRIPT_DIR/process-inbox.sh}"
@@ -34,6 +35,8 @@ main() {
   [[ "$CONTEXT_TOKENS" =~ ^[0-9]+$ ]] && (( CONTEXT_TOKENS > 0 )) || error 65 "Invalid CONTEXT_TOKENS"
   mkdir -p "$ai" "$archive" "$outbox"
 
+  if reset_pending "$uid_dir"; then apply_reset "$uid_dir"; return 0; fi
+
   balance="$(balance_of "$uid_dir")" || error 65 "Invalid user credits"
 
   # A pending user history message must receive an answer regardless of balance.
@@ -45,6 +48,8 @@ main() {
     incoming=("$uid_dir/inbox/"*)
     shopt -u nullglob
     (( ${#incoming[@]} > 0 )) || return 0
+
+    if reset_pending "$uid_dir"; then apply_reset "$uid_dir"; return 0; fi
 
     if jq -ne --argjson balance "$balance" '$balance <= 0' >/dev/null; then
       mkdir -p "$delayed"
@@ -62,8 +67,13 @@ main() {
         mv -n -- "${delayed_files[@]}" "$uid_dir/inbox/"
       fi
     fi
-    "$PROCESS_INBOX" "$uid_dir"
+    local inbox_status=0
+    "$PROCESS_INBOX" "$uid_dir" || inbox_status=$?
+    if (( inbox_status == RESET_APPLIED )); then return 0; fi
+    if (( inbox_status != 0 )); then return "$inbox_status"; fi
   fi
+  if reset_pending "$uid_dir"; then apply_reset "$uid_dir"; return 0; fi
+
   last="$(last_history "$ai")"
   [[ "$last" == *_u.json ]] || return 0
   number="${last##*/}"; number="${number%_u.json}"
@@ -80,11 +90,15 @@ main() {
 
   log "AI ${number} started"
 
-  # Tell the messenger the AI is generating a response.
-  : >"$outbox/typing"
-
   # post-responses.sh receives the request JSON on stdin and returns response JSON on stdout.
   tmp="$(mktemp "$archive/.response.XXXXXX")"
+  if reset_pending "$uid_dir"; then
+    rm -f -- "$tmp" "$request"
+    apply_reset "$uid_dir"
+    return 0
+  fi
+  # Tell the messenger the AI is generating a response.
+  : >"$outbox/typing"
   if ! "$POST_RESPONSES" <"$request" >"$tmp"; then
     rm -f "$tmp"
     error 70 'OpenAI request failed'
@@ -177,20 +191,6 @@ timestamp() {
     [[ ! -e "$1/${name}_responses_request.json" && ! -e "$1/${name}_operation.json" ]] && { printf '%s\n' "$name"; return; }
     sleep 0.01
   done
-}
-
-write_outbox() {
-  local dir="$1" value="$2" tmp dest base suffix
-  tmp="$(mktemp "$dir/.out.XXXXXX")"
-  printf '%s\n' "$value" >"$tmp"
-  base="$(date -u +%s)"
-  dest="$dir/${base}.txt"
-  suffix=0
-  while [[ -e "$dest" ]]; do
-    ((suffix += 1))
-    dest="$dir/${base}-${suffix}.txt"
-  done
-  mv -n "$tmp" "$dest" || error 73 'Cannot create outbox message'
 }
 
 write_json() {

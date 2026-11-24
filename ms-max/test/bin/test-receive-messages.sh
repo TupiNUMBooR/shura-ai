@@ -98,7 +98,7 @@ EOF
   check "handles start and help" 0 "Received: 2m 2c" bash "$SCRIPT"
   check "commands counted separately from text" 0 "Received: 2m 2c" bash "$SCRIPT"
   check "start includes balance" 0 "Баланс: 633 кредитов" cat "$DB_DIR/users/42/outbox/110.txt"
-  check "help includes commands" 0 "/reset — очистить историю" cat "$DB_DIR/users/42/outbox/111.txt"
+  check "help includes commands" 0 "/reset — начать новый диалог" cat "$DB_DIR/users/42/outbox/111.txt"
   check "help advertises balance" 0 "/balance — мой баланс" cat "$DB_DIR/users/42/outbox/111.txt"
   check "start bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/110.txt"
   check "help bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/111.txt"
@@ -202,6 +202,32 @@ EOF
     file_absent "$DB_DIR/users/43"
   check "advances marker for ignored messages" 0 "30" \
     cat "$DB_DIR/marker.txt"
+
+  export POLL_RESPONSE='{"marker":31,"updates":[
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":101,"text":"after"}
+    }},
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":100,"text":"/reset"}
+    }},
+    {"update_type":"message_created","message":{
+      "sender":{"user_id":42},"recipient":{"chat_id":-420,"chat_type":"dialog"},
+      "body":{"seq":99,"text":"before"}
+    }}
+  ]}'
+  local inbox="$DB_DIR/users/42/inbox"
+  check "handles reset command" 0 "" bash "$SCRIPT"
+  check "queues reset at the command seq" 0 "" test -f "$inbox/100.reset"
+  check "reset bypasses the prompt path" 0 "" file_absent "$inbox/100.txt"
+  check "queues the next message" 0 "after" cat "$inbox/101.txt"
+
+  printf '100\n' >"$DB_DIR/users/42/reset_seq.txt"
+  rm -f -- "$inbox/99.txt" "$inbox/100.reset"
+  check "handles replay after an applied reset" 0 "" bash "$SCRIPT"
+  check "does not resurrect old messages" 0 "" file_absent "$inbox/99.txt"
+  check "does not recreate an applied marker" 0 "" file_absent "$inbox/100.reset"
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))
