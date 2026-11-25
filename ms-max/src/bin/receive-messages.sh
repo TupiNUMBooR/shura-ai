@@ -26,7 +26,7 @@ main() {
 
   local marker="" response new_marker updates update
   local user seq chat_id uid_dir inbox attachment type url ext mime n filename message_count command balance payload credits rub callback_id
-  local has_attachment notification
+  local has_attachment notification reply
 
   [[ ! -f "$MARKER_FILE" ]] || marker=$(<"$MARKER_FILE")
   response=$("$POLL_MAX" ${marker:+"$marker"})
@@ -128,7 +128,7 @@ main() {
         [[ ! -e "$uid_dir/outbox/$seq.txt" ]] || continue
         balance=$(balance_of "$uid_dir") || { echo "Invalid user credits: $user" >&2; return 65; }
         tmp=$(mktemp "$uid_dir/outbox/.help.XXXXXX")
-        printf 'Привет! Я Шура 💜\n\nТвоя ИИ-помощница. Могу отвечать на вопросы, разбирать задачи и помогать с идеями.\n\nБаланс: %s кредитов\n\n/start или /help — справка\n/buy — купить кредиты\n/balance — мой баланс\n/reset — начать новый диалог\n' "$balance" >"$tmp"
+        printf 'Привет! Я Шура 💜\n\nТвоя ИИ-помощница. Могу отвечать на вопросы, разбирать задачи и помогать с идеями.\n\nБаланс: %s кредитов\n\n/start или /help — справка\n/buy — купить кредиты\n/balance — мой баланс\n/reset — начать новый диалог\n/support — обращение в поддержку\n' "$balance" >"$tmp"
         mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
         tmp=""
         continue
@@ -170,6 +170,20 @@ main() {
       /reset)
         # The receive loop publishes messages in seq order.
         : >"$inbox/$seq.reset"
+        continue
+        ;;
+      /support|/support[[:space:]]*)
+        if [[ "${command#/support}" =~ [^[:space:]] ]]; then
+          log_support_request "$user" "$seq" "$update"
+          reply='Спасибо! Мы прочтём твоё обращение 💜'
+        else
+          reply=$'Чтобы написать в поддержку, отправь /support и текст обращения.\nНапример: /support Не получается оплатить кредиты'
+        fi
+        mkdir -p "$uid_dir/outbox"
+        tmp=$(mktemp "$uid_dir/outbox/.support.XXXXXX")
+        printf '%s\n' "$reply" >"$tmp"
+        mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
+        tmp=""
         continue
         ;;
       /*)
@@ -244,6 +258,13 @@ main() {
     mv "$tmp" "$MARKER_FILE"
     tmp=""
   fi
+}
+
+log_support_request() {
+  local user="$1" seq="$2" message
+  message=$(jq -c '.message.body.text | sub("^/support[[:space:]]+"; "")' <<<"$3")
+  printf '[%s] [%s] [ALERT] Support request user=%s seq=%s %s\n' \
+    "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$user" "$seq" "$message" >&2
 }
 
 init_user() {

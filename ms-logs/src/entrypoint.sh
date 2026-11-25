@@ -47,7 +47,7 @@ main() {
 
   WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/ms-logs.XXXXXX")
   trap 'rm -rf -- "$WORK_DIR"' EXIT
-  mkdir -p "$WORK_DIR/queue/debug" "$WORK_DIR/queue/error" "$WORK_DIR/queue/success"
+  mkdir -p "$WORK_DIR/queue/debug" "$WORK_DIR/queue/error" "$WORK_DIR/queue/alert"
   local fifo="$WORK_DIR/stream"
   mkfifo "$fifo"
   exec 3<>"$fifo"
@@ -60,11 +60,11 @@ main() {
 
   send_queue debug "$MAX_DEBUG_CHAT_ID" & CHILD_PIDS+=("$!")
   send_queue error "$MAX_ALERT_CHAT_ID" & CHILD_PIDS+=("$!")
-  send_queue success "$MAX_ALERT_CHAT_ID" & CHILD_PIDS+=("$!")
+  send_queue alert "$MAX_ALERT_CHAT_ID" & CHILD_PIDS+=("$!")
   trap shutdown TERM INT
-  alert_lifecycle "Started VERSION=$VERSION"
+  alert_lifecycle '🟢 START' "Started VERSION=$VERSION"
 
-  local next_scan=0 now_us id line
+  local next_scan=0 now_us record
   while :; do
     now_us="${EPOCHREALTIME/./}"
     if (( now_us >= next_scan )); then
@@ -74,15 +74,11 @@ main() {
     now_us="${EPOCHREALTIME/./}"
     if (( INCIDENT_DEADLINE > 0 && now_us >= INCIDENT_DEADLINE )); then flush_incident; fi
     if (( DEBUG_STARTED > 0 && now_us - DEBUG_STARTED >= LOG_BATCH_SECONDS * 1000000 )); then flush_debug; fi
-    if IFS= read -r -t 0.2 -u 3 line; then
-      id="${line%%$'\t'*}"
-      if [[ "$id" != "$line" ]]; then
-        line="${line#*$'\t'}"
-        now_us="${EPOCHREALTIME/./}"
-        if (( INCIDENT_DEADLINE > 0 && now_us >= INCIDENT_DEADLINE )); then flush_incident; fi
-        if (( DEBUG_STARTED > 0 && now_us - DEBUG_STARTED >= LOG_BATCH_SECONDS * 1000000 )); then flush_debug; fi
-        handle_line "$id" "$line"
-      fi
+    if IFS= read -r -t 0.2 -u 3 record; then
+      now_us="${EPOCHREALTIME/./}"
+      if (( INCIDENT_DEADLINE > 0 && now_us >= INCIDENT_DEADLINE )); then flush_incident; fi
+      if (( DEBUG_STARTED > 0 && now_us - DEBUG_STARTED >= LOG_BATCH_SECONDS * 1000000 )); then flush_debug; fi
+      handle_record "$record"
     fi
     now_us="${EPOCHREALTIME/./}"
     if (( INCIDENT_DEADLINE > 0 && now_us >= INCIDENT_DEADLINE )); then
@@ -99,11 +95,11 @@ main() {
 log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
 
 alert_lifecycle() {
-  local line
-  line=$(log "$1" 2>&1)
+  local header="$1" line
+  line=$(log "$2" 2>&1)
   printf '%s\n' "$line" >&2
   # The alert must have time to finish before Docker stops the container.
-  timeout -k 1 5 "$POST_MESSAGE" "$MAX_ALERT_CHAT_ID" <<<"[ms-logs] $line" >/dev/null ||
+  timeout -k 1 5 "$POST_MESSAGE" "$MAX_ALERT_CHAT_ID" <<<"$header"$'\n'"[ms-logs] $line" >/dev/null ||
     log 'Could not send lifecycle alert'
 }
 
@@ -185,15 +181,20 @@ flush_incident() {
 }
 
 handle_line() {
-  local id="$1" line="$2" name formatted severity="" context
+  local id="$1" line="$2" name formatted severity="" context header
   name="${NAMES[$id]:-$id}"
   formatted="[$name] $line"
   append_debug "$formatted"
 
   # Never alert on our own logs, but include them in DEBUG.
   if [[ "$id" != "$SELF_ID" ]]; then
-    if [[ "$line" == *'[SUCCESS]'* ]]; then
-      queue_message success "$formatted"
+    if [[ "$line" =~ \[(SUCCESS|ALERT)\] ]]; then
+      case "${BASH_REMATCH[1]}" in
+        SUCCESS) header='✅ SUCCESS' ;;
+        ALERT) header='🔔 ALERT' ;;
+      esac
+      queue_message alert "$header"$'\n'"$formatted"
+      return 0
     elif [[ "$line" =~ (^|[^[:alnum:]_])([Ee][Rr][Rr][Oo][Rr]|[Ee][Rr][Rr]|[Ff][Aa][Tt][Aa][Ll]|[Cc][Rr][Ii][Tt][Ii][Cc][Aa][Ll]|[Pp][Aa][Nn][Ii][Cc]|[Ee][Xx][Cc][Ee][Pp][Tt][Ii][Oo][Nn]|[Tt][Rr][Aa][Cc][Ee][Bb][Aa][Cc][Kk]|[Ff][Aa][Ii][Ll][Ee][Dd]|[Ff][Aa][Ii][Ll][Uu][Rr][Ee])([^[:alnum:]_]|$) ]]; then
       severity=ERROR
     elif [[ "$line" =~ (^|[^[:alnum:]_])([Ww][Aa][Rr][Nn]|[Ww][Aa][Rr][Nn][Ii][Nn][Gg]|[Dd][Ee][Pp][Rr][Ee][Cc][Aa][Tt][Ee][Dd])([^[:alnum:]_]|$) ]]; then
@@ -215,18 +216,30 @@ handle_line() {
   if ((${#RING[@]} > CONTEXT_BEFORE_LINES)); then RING=("${RING[@]:1}"); fi
 }
 
+handle_record() {
+  local record="$1" id line file
+  id="${record%%$'\t'*}"
+  [[ "$id" != "$record" ]] || return 0
+  line="${record#*$'\t'}"
+  if [[ "$id" == @* ]]; then
+    id="${id#@}"
+    file="$WORK_DIR/$line"
+    IFS= read -r line <"$file"
+    rm -f -- "$file"
+  fi
+  handle_line "$id" "$line"
+}
+
 watch_container() {
-  local id="$1" started="$2" line chunk
+  local id="$1" started="$2" line file
   # Each FIFO write is <= PIPE_BUF even with UTF-8, preventing interleaved lines.
   docker logs --follow --since "$started" "$id" 2>&1 | while IFS= read -r line || [[ -n "$line" ]]; do
-    if [[ -z "$line" ]]; then
-      printf '%s\t\n' "$id" >&3
+    if (( ${#line} > 900 )); then
+      file=$(mktemp "$WORK_DIR/.line.XXXXXXXX")
+      printf '%s\n' "$line" >"$file"
+      printf '@%s\t%s\n' "$id" "${file##*/}" >&3
     else
-      while [[ -n "$line" ]]; do
-        chunk="${line:0:900}"
-        printf '%s\t%s\n' "$id" "$chunk" >&3
-        line="${line:900}"
-      done
+      printf '%s\t%s\n' "$id" "$line" >&3
     fi
   done
 }
@@ -267,7 +280,7 @@ shutdown() {
   (( STOPPING == 0 )) || return
   STOPPING=1
   trap - TERM INT
-  alert_lifecycle "Stopped VERSION=$VERSION"
+  alert_lifecycle '🛑 STOP' "Stopped VERSION=$VERSION"
   local pid
   for pid in "${CHILD_PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
   wait 2>/dev/null || true

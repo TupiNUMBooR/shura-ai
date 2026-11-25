@@ -10,7 +10,7 @@ PASS=0
 FAIL=0
 
 main() {
-  need_commands bash jq curl mktemp
+  need_commands bash jq curl grep mktemp
   resolve_script
 
   TMP_DIR=$(mktemp -d)
@@ -122,6 +122,7 @@ EOF
   check "commands counted separately from text" 0 "Received: 2m 2c" bash "$SCRIPT"
   check "start includes balance" 0 "Баланс: 633 кредитов" cat "$DB_DIR/users/42/outbox/110.txt"
   check "help includes commands" 0 "/reset — начать новый диалог" cat "$DB_DIR/users/42/outbox/111.txt"
+  check "help includes support" 0 "/support — обращение в поддержку" cat "$DB_DIR/users/42/outbox/111.txt"
   check "help advertises balance" 0 "/balance — мой баланс" cat "$DB_DIR/users/42/outbox/111.txt"
   check "start bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/110.txt"
   check "help bypasses AI inbox" 0 "" file_absent "$DB_DIR/users/42/inbox/111.txt"
@@ -260,6 +261,34 @@ EOF
   check "handles replay after an applied reset" 0 "" bash "$SCRIPT"
   check "does not resurrect old messages" 0 "" file_absent "$inbox/99.txt"
   check "does not recreate an applied marker" 0 "" file_absent "$inbox/100.reset"
+
+  local support_dir="$DB_DIR/users/77" support_log long_text
+  mkdir -p "$support_dir"
+  printf '0\n' >"$support_dir/credits_received.txt"
+  printf -v long_text '%01600d' 1
+  POLL_RESPONSE=$(jq -cn --arg long "$long_text" '
+    {marker:32, updates:(
+      ["/support", "/support \t", "/support Не получается оплатить", "/support первая строка\nвторая [SUCCESS]", ("/support " + $long)]
+      | to_entries | map({update_type:"message_created", message:{
+          sender:{user_id:77}, recipient:{chat_id:-770, chat_type:"dialog"},
+          body:{seq:(200 + .key), text:.value}
+        }})
+    )}')
+  support_log=$(bash "$SCRIPT" 2>&1)
+  check "support explains how to send a request" 0 "Например: /support" cat "$support_dir/outbox/200.txt"
+  check "support with whitespace explains usage" 0 "Например: /support" cat "$support_dir/outbox/201.txt"
+  check "each support request with text produces one alert record" 0 '' \
+    test "$(grep -Fc '[ALERT] Support request' <<<"$support_log")" = 3
+  check "logs the full support request with the user ID" 0 '' grep -Fq \
+    '[ALERT] Support request user=77 seq=202 "Не получается оплатить"' <<<"$support_log"
+  check "logs multiline support as one record" 0 '' grep -Fq \
+    '[ALERT] Support request user=77 seq=203 "первая строка\nвторая [SUCCESS]"' <<<"$support_log"
+  check "preserves a long support request in one record" 0 '' grep -Fq \
+    "[ALERT] Support request user=77 seq=204 \"$long_text\"" <<<"$support_log"
+  check "thanks the user even at zero balance" 0 "Спасибо! Мы прочтём твоё обращение 💜" cat "$support_dir/outbox/202.txt"
+  check "answers a multiline request" 0 "Спасибо!" cat "$support_dir/outbox/203.txt"
+  check "support bypasses AI" 0 '' file_absent "$support_dir/inbox/203.txt"
+  check "support spends no credits" 0 '' file_absent "$support_dir/credits_spent.txt"
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))

@@ -17,7 +17,8 @@ main() (
         {"name": "help", "description": "Справка"},
         {"name": "buy", "description": "Купить кредиты"},
         {"name": "balance", "description": "Мой баланс"},
-        {"name": "reset", "description": "Начать новый диалог"}
+        {"name": "reset", "description": "Начать новый диалог"},
+        {"name": "support", "description": "Обращение в поддержку"}
       ]
     }' \
     "${MAX_API_URL%/}/me/commands") || return 69
@@ -25,6 +26,6 @@ main() (
     echo "MAX HTTP $code: $(cat "$response")" >&2
     return 65
   fi
-  echo 'Commands registered: /start /help /buy /balance /reset'
+  echo 'Commands registered: /start /help /buy /balance /reset /support'
 )
 main "$@"
