@@ -40,7 +40,7 @@ main() {
       tmp=$(mktemp "$uid_dir/outbox/.payment.XXXXXX")
       printf 'Платёж успешно завершён! 💜\n\nНачислено: %s кредитов\nТвой баланс: %s кредитов\n' "$credits" "$balance" >"$tmp"
       mv -f "$tmp" "$uid_dir/outbox/$id.txt"
-      log "[SUCCESS] Completed $id: +$credits credits, $rub RUB, user=${uid_dir##*/}"
+      log "[SUCCESS] Payment $id completed: +$credits credits, $rub RUB, user=${uid_dir##*/}"
     else
       mkdir -p "$parent/failed"
       mv -f -- "$file" "$parent/failed/$id.json"
