@@ -10,6 +10,7 @@ log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
 
 main() {
   [[ $# -eq 0 ]] || return 2
+  [[ "${SHOP_ENABLED:-1}" == 1 ]] || return 0
   [[ -f "$PRICES_FILE" ]] || { log '[ERROR] Missing credit-packages.json'; return 66; }
   [[ -d "$DB_DIR" ]] || return 0
   local order credits rub return_url parent uid_dir tmp response id path out message key status

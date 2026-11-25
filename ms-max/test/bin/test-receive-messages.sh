@@ -26,16 +26,18 @@ EOF
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "${CURL_FAIL:-0}" == 0 ]] || exit 22
-output=""; callback=0
+output=""; callback=0; body=""
 while (($#)); do
   case "$1" in
     -o|--output) output="$2"; shift 2 ;;
     --write-out) shift 2 ;;
+    --data-binary) body="$2"; shift 2 ;;
     *'/answers?callback_id='*) callback=1; shift ;;
     *) shift ;;
   esac
 done
 if (( callback )); then
+  if [[ -n "${CALLBACK_BODY_FILE:-}" ]]; then printf '%s\n' "$body" >"$CALLBACK_BODY_FILE"; fi
   [[ -z "$output" ]] || printf '{"error":"callback mock error"}' >"$output"
   printf '%s' "${CURL_HTTP_CODE:-200}"
 else
@@ -151,10 +153,19 @@ EOF
       "user":{"user_id":42},"payload":"buy:5000","callback_id":"cb-1"
     }}
   ]}'
+  export MAX_BOT_TOKEN=test
+  SHOP_ENABLED=0 MAX_PAYMENT_RETURN_URL= CALLBACK_BODY_FILE="$TMP_DIR/callback.json" \
+    check "answers buy and old buttons while the shop is closed" 0 "" bash "$SCRIPT"
+  check "buy says the shop will open soon" 0 "Магазин скоро откроется 💜" cat "$DB_DIR/users/42/outbox/112.txt"
+  check "old buy button says the shop will open soon" 0 "Магазин скоро откроется 💜" jq -r .notification "$TMP_DIR/callback.json"
+  check "closed shop publishes no keyboard" 0 "" file_absent "$DB_DIR/users/42/outbox/message_buy_112.json"
+  check "closed shop enqueues no order" 0 "" file_absent "$DB_DIR/users/42/payments/orders/5000.json"
+  check "closed shop bypasses AI" 0 "" file_absent "$DB_DIR/users/42/inbox/112.txt"
   MAX_PAYMENT_RETURN_URL= check "rejects purchase without return URL" 78 "MAX_PAYMENT_RETURN_URL" bash "$SCRIPT"
   check "does not enqueue purchase without return URL" 0 "" file_absent "$DB_DIR/users/42/payments/orders/5000.json"
   export MAX_PAYMENT_RETURN_URL=https://web.max.ru/829005994
-  check "handles purchase and unknown command" 0 "" bash "$SCRIPT"
+  CALLBACK_BODY_FILE="$TMP_DIR/callback.json" check "handles purchase and unknown command" 0 "" bash "$SCRIPT"
+  check "open shop acknowledges the purchase" 0 "Создаю ссылку на оплату..." jq -r .notification "$TMP_DIR/callback.json"
   check "creates buy keyboard with one callback per row" 0 "" jq -e '
     .buttons | length == 3 and all(.[]; length == 1 and .[0].type == "callback")
     and .[1][0].payload == "buy:5000"
@@ -169,7 +180,7 @@ EOF
   MAX_PAYMENT_RETURN_URL=https://max.example/other check "handles repeated purchase click" 0 "" bash "$SCRIPT"
   check "repeated purchase preserves original return URL" 0 "" jq -e --arg url "$MAX_PAYMENT_RETURN_URL" \
     '.return_url == $url' "$DB_DIR/users/42/payments/orders/5000.json"
-  export MAX_BOT_TOKEN=test CURL_HTTP_CODE=400
+  export CURL_HTTP_CODE=400
   check "callback shows HTTP error body" 0 "MAX callback HTTP 400: {\"error\":\"callback mock error\"}" bash "$SCRIPT"
   unset MAX_BOT_TOKEN CURL_HTTP_CODE
 

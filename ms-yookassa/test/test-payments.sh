@@ -35,6 +35,9 @@ assert() { "$@" || { echo "FAIL: $*" >&2; exit 1; }; }
 echo '{"credits":5000,"return_url":"https://web.max.ru/829005994"}' >"$DB_DIR/max/users/42/payments/orders/5000.json"
 echo '{"credits":1000,"return_url":"https://t.me/example_bot"}' >"$DB_DIR/telegram/users/7/payments/orders/1000.json"
 echo '{"credits":1000}' >"$DB_DIR/max/users/42/payments/orders/1000.json"
+SHOP_ENABLED=0 bash "$orders" >/dev/null 2>&1
+assert jq -e 'has("idempotence_key") | not' "$DB_DIR/max/users/42/payments/orders/5000.json" >/dev/null
+assert test ! -e "$DB_DIR/max/users/42/payments/processing"
 CREATE_FAIL=69 bash "$orders" >/dev/null 2>&1
 assert test -f "$DB_DIR/max/users/42/payments/orders/5000.json"
 assert test ! -e "$DB_DIR/max/users/42/payments/orders/1000.json"
@@ -60,7 +63,7 @@ PAYMENT_STATUS=pending bash "$poll"
 assert test -f "$file"
 GET_FAIL=69 bash "$poll" >/dev/null 2>&1
 assert test -f "$file"
-PAYMENT_STATUS=succeeded bash "$poll" >/dev/null 2>"$TMP/success.log"
+SHOP_ENABLED=0 PAYMENT_STATUS=succeeded bash "$poll" >/dev/null 2>"$TMP/success.log"
 assert grep -Fq "[SUCCESS] Completed $(basename "${file%.json}"): +5000 credits, 79 RUB, user=42" "$TMP/success.log"
 assert test ! -e "$file"
 assert test -f "$DB_DIR/max/users/42/payments/completed/$(basename "$file")"

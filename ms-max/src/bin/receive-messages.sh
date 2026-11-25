@@ -7,8 +7,11 @@ SCRIPT_NAME="$(basename "$0")"
 # optional environment
 DB_DIR="${DB_DIR:-./db}"
 VERBOSE="${VERBOSE:-0}"
+SHOP_ENABLED="${SHOP_ENABLED:-1}"
+SHOP_CLOSED_MESSAGE='Магазин скоро откроется 💜'
 MAX_PAYMENT_RETURN_URL="${MAX_PAYMENT_RETURN_URL:-}"
 POLL_MAX="${POLL_MAX:-$(dirname "$0")/poll.sh}"
+ANSWER_CALLBACK="${ANSWER_CALLBACK:-$(dirname "$0")/answer-callback.sh}"
 PRICES_FILE="$(dirname "$0")/../config/credit-packages.json"
 DEFAULT_CREDITS="$(dirname "$0")/../config/user.default/credits_received.txt"
 
@@ -23,7 +26,7 @@ main() {
 
   local marker="" response new_marker updates update
   local user seq chat_id uid_dir inbox attachment type url ext mime n filename message_count command balance payload credits rub callback_id
-  local has_attachment
+  local has_attachment notification
 
   [[ ! -f "$MARKER_FILE" ]] || marker=$(<"$MARKER_FILE")
   response=$("$POLL_MAX" ${marker:+"$marker"})
@@ -67,36 +70,28 @@ main() {
     [[ "$user" =~ ^[0-9]+$ ]] || continue
     [[ "$payload" =~ ^buy:([0-9]+)$ ]] || continue
     credits="${BASH_REMATCH[1]}"
-    rub="$(jq -er --argjson credits "$credits" '.packages[] | select(.credits == $credits) | .rub' "$PRICES_FILE")" || continue
-    if [[ ! "$MAX_PAYMENT_RETURN_URL" =~ ^https://[^/?#[:space:]@]+([/?#][^[:space:]]*)?$ ]]; then
-      echo '[ERROR] MAX_PAYMENT_RETURN_URL must be an HTTPS URL' >&2
-      return 78
-    fi
-    uid_dir="$DB_DIR/users/$user"
-    mkdir -p "$uid_dir"
-    init_user "$uid_dir"
-    mkdir -p "$uid_dir/payments/orders"
-    tmp="$(mktemp "$uid_dir/payments/orders/.order.XXXXXX")"
-    jq -nc --argjson credits "$credits" --arg return_url "$MAX_PAYMENT_RETURN_URL" \
-      '{credits:$credits,return_url:$return_url}' >"$tmp"
-    # A duplicate click while an order exists must not overwrite it.
-    ln "$tmp" "$uid_dir/payments/orders/$credits.json" 2>/dev/null || :
-    rm -f "$tmp"; tmp=""
-    if [[ -n "$callback_id" && -n "${MAX_BOT_TOKEN:-}" ]]; then
-      tmp=$(mktemp "$uid_dir/.callback.XXXXXX")
-      local http_code
-      if http_code=$(curl --silent --show-error --connect-timeout 5 --max-time 15 \
-          --output "$tmp" --write-out '%{http_code}' \
-          -X POST -H "Authorization: $MAX_BOT_TOKEN" -H 'Content-Type: application/json' \
-          -d '{"notification":"Создаю ссылку на оплату..."}' \
-          "${MAX_API_URL:-https://platform-api2.max.ru}/answers?callback_id=$callback_id"); then
-        if [[ "$http_code" != 200 && "$http_code" != 204 ]]; then
-          echo "MAX callback HTTP $http_code: $(cat "$tmp")" >&2
-        fi
-      else
-        echo 'MAX callback request failed' >&2
+    if [[ "$SHOP_ENABLED" == 1 ]]; then
+      rub="$(jq -er --argjson credits "$credits" '.packages[] | select(.credits == $credits) | .rub' "$PRICES_FILE")" || continue
+      if [[ ! "$MAX_PAYMENT_RETURN_URL" =~ ^https://[^/?#[:space:]@]+([/?#][^[:space:]]*)?$ ]]; then
+        echo '[ERROR] MAX_PAYMENT_RETURN_URL must be an HTTPS URL' >&2
+        return 78
       fi
+      uid_dir="$DB_DIR/users/$user"
+      mkdir -p "$uid_dir"
+      init_user "$uid_dir"
+      mkdir -p "$uid_dir/payments/orders"
+      tmp="$(mktemp "$uid_dir/payments/orders/.order.XXXXXX")"
+      jq -nc --argjson credits "$credits" --arg return_url "$MAX_PAYMENT_RETURN_URL" \
+        '{credits:$credits,return_url:$return_url}' >"$tmp"
+      # A duplicate click while an order exists must not overwrite it.
+      ln "$tmp" "$uid_dir/payments/orders/$credits.json" 2>/dev/null || :
       rm -f "$tmp"; tmp=""
+      notification='Создаю ссылку на оплату...'
+    else
+      notification="$SHOP_CLOSED_MESSAGE"
+    fi
+    if [[ -n "$callback_id" ]]; then
+      "$ANSWER_CALLBACK" "$callback_id" <<<"$notification" || :
     fi
   done < <(jq -c '.updates[] | select(.update_type == "message_callback")' <<<"$response")
 
@@ -149,6 +144,13 @@ main() {
         ;;
       /buy)
         mkdir -p "$uid_dir/outbox"
+        if [[ "$SHOP_ENABLED" != 1 ]]; then
+          tmp=$(mktemp "$uid_dir/outbox/.buy.XXXXXX")
+          printf '%s\n' "$SHOP_CLOSED_MESSAGE" >"$tmp"
+          mv -- "$tmp" "$uid_dir/outbox/$seq.txt"
+          tmp=""
+          continue
+        fi
         balance=$(balance_of "$uid_dir") || { echo "Invalid user credits: $user" >&2; return 65; }
         tmp="$(mktemp "$uid_dir/outbox/.buy.XXXXXX")"
         jq -n --arg balance "$balance" --slurpfile prices "$PRICES_FILE" '
