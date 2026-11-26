@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # brick-basic.sh
-# Short Bash brick template Bash brick template with configuration, validation and logging.
+# Short Bash brick template with configuration, validation and logging.
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
@@ -19,7 +19,7 @@ main() {
   warn "Sleeping for $SLEEP_SECONDS seconds"
   sleep "$SLEEP_SECONDS"
 
-  log "\$HOME=$HOME, \$1=$1"
+  echo "\$HOME=$HOME, \$1=$1"
 }
 
 # region functions
