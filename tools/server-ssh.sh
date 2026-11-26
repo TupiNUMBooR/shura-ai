@@ -2,26 +2,13 @@
 # server-ssh.sh
 set -euo pipefail
 
-SCRIPT_NAME="$(basename "$0")"
+if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
+  cat -- "${BASH_SOURCE[0]}"
+  exit
+fi
 
-main() {
-  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    printf 'Usage: %s [COMMAND [ARG...]]\nRequires SSH_ADDRESS in .env.\n' "$SCRIPT_NAME"
-    return 0
-  fi
+source ./.env
 
-  [[ -f .env ]] || error 66 "Missing file: .env"
-  source ./.env
-  [[ -n "${SSH_ADDRESS:-}" ]] || error 66 "SSH_ADDRESS is required"
+: "${SSH_ADDRESS:?}"
 
-  exec ssh -- "$SSH_ADDRESS" "$@"
-}
-
-# region functions
-
-log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
-error() { local code="$1"; shift; log "[ERROR] $*"; exit "$code"; }
-
-# endregion
-
-main "$@"
+exec ssh -- "$SSH_ADDRESS" "$@"

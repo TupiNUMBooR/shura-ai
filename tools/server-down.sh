@@ -2,30 +2,18 @@
 # server-down.sh
 set -euo pipefail
 
-SCRIPT_NAME="$(basename "$0")"
+if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
+  cat -- "${BASH_SOURCE[0]}"
+  exit
+fi
 
-main() {
-  if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    printf 'Usage: %s\nRequires SSH_ADDRESS and REMOTE_DIR in .env.\n' "$SCRIPT_NAME"
-    return 0
-  fi
-  [[ $# -eq 0 ]] || error 2 "Unexpected arguments"
+[[ $# -eq 0 ]] || { echo "Unexpected arguments" >&2; exit 2; }
 
-  [[ -f .env ]] || error 66 "Missing file: .env"
-  source ./.env
-  [[ -n "${SSH_ADDRESS:-}" ]] || error 66 "SSH_ADDRESS is required"
-  [[ -n "${REMOTE_DIR:-}" ]] || error 66 "REMOTE_DIR is required"
-  [[ "$REMOTE_DIR" = /* ]] || error 78 "REMOTE_DIR must be an absolute path"
-  [[ "$REMOTE_DIR" != *"'"* ]] || error 78 "REMOTE_DIR must not contain a single quote"
+source ./.env
 
-  exec ssh -- "$SSH_ADDRESS" "cd '$REMOTE_DIR' && docker compose -f compose.yml down"
-}
+: "${SSH_ADDRESS:?}"
+: "${REMOTE_DIR:?}"
+[[ "$REMOTE_DIR" = /* ]] || { echo "REMOTE_DIR must be an absolute path" >&2; exit 78; }
+[[ "$REMOTE_DIR" != *"'"* ]] || { echo "REMOTE_DIR must not contain a single quote" >&2; exit 78; }
 
-# region functions
-
-log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
-error() { local code="$1"; shift; log "[ERROR] $*"; exit "$code"; }
-
-# endregion
-
-main "$@"
+exec ssh -- "$SSH_ADDRESS" "cd '$REMOTE_DIR' && docker compose -f compose.yml down"
