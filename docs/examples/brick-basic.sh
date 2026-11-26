@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
-# brick2.sh - Minimal Bash brick template with configuration, validation and logging.
+# brick-basic.sh
+# Short Bash brick template Bash brick template with configuration, validation and logging.
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
-
-# required environment
-: "${API_KEY:?}"
-
-# optional environment
 SLEEP_SECONDS="${SLEEP_SECONDS:-1}"
 
 main() {
-  [[ $# -eq 1 ]] || error 2 "Expected argument"
+  if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
+    echo "Usage: $SCRIPT_NAME <message>"
+    echo "Requires \$HOME"
+    return 0
+  fi
 
-  log "Sleeping for $SLEEP_SECONDS seconds"
+  [[ $# -eq 1 ]] || error 2 "Expected argument"
+  : "${HOME:?}"
+
+  warn "Sleeping for $SLEEP_SECONDS seconds"
   sleep "$SLEEP_SECONDS"
+
+  log "\$HOME=$HOME, \$1=$1"
 }
 
 # region functions

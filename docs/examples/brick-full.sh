@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bash-brick-example.sh
+# brick-full.sh
 set -Eeuo pipefail
 
 SCRIPT_NAME="$(basename "$0")"

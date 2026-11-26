@@ -1,6 +1,5 @@
-
 #!/usr/bin/env bash
-# test-brick2.sh - Minimal tests for a Bash brick.
+# test-brick-basic.sh - Minimal tests for a Bash brick.
 set -euo pipefail
 
 TEST_NAME="$(basename "$0")"
@@ -12,17 +11,17 @@ PASS=0
 FAIL=0
 
 main() {
-  need_commands env date sleep
+  need_commands basename dirname env date sleep
   resolve_script
 
-  check "requires API_KEY" 1 "API_KEY" \
-    env -u API_KEY "$SCRIPT" hello
+  check "requires HOME" 1 "HOME" \
+    env -u HOME "$SCRIPT" hello
 
   check "requires argument" 2 "Expected argument" \
-    env API_KEY=test "$SCRIPT"
+    env HOME=/example "$SCRIPT"
 
   check "runs successfully" 0 "Sleeping for 0 seconds" \
-    env API_KEY=test SLEEP_SECONDS=0 "$SCRIPT" hello
+    env HOME=/example SLEEP_SECONDS=0 "$SCRIPT" hello
 
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   ((FAIL == 0))
