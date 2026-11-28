@@ -23,7 +23,7 @@ cat >"$TMP/bin/get-payment" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "${GET_FAIL:-0}" == 0 ]] || exit 69
-jq -nc --arg id "$1" --arg status "${PAYMENT_STATUS:-pending}" '{id:$id,status:$status,amount:{value:"79.00",currency:"RUB"},metadata:{polled:true}}'
+jq -nc --arg id "$1" --arg status "${PAYMENT_STATUS:-pending}" '{id:$id,status:$status,amount:{value:"79.00",currency:"RUB"},test:(env.PAYMENT_TEST == "1"),metadata:{polled:true}}'
 MOCK
 chmod +x "$TMP/bin/"*
 export DB_DIR="$TMP/db" CREATE_PAYMENT="$TMP/bin/create-payment" GET_PAYMENT="$TMP/bin/get-payment"
@@ -63,10 +63,10 @@ PAYMENT_STATUS=pending bash "$poll"
 assert test -f "$file"
 GET_FAIL=69 bash "$poll" >/dev/null 2>&1
 assert test -f "$file"
-SHOP_ENABLED=0 PAYMENT_STATUS=succeeded bash "$poll" >/dev/null 2>"$TMP/success.log"
+SHOP_ENABLED=0 PAYMENT_TEST=1 PAYMENT_STATUS=succeeded bash "$poll" >/dev/null 2>"$TMP/success.log"
 assert grep -Fq "[SUCCESS] Payment $(basename "${file%.json}") completed: +5000 credits, 79 RUB, user=42" "$TMP/success.log"
 assert test ! -e "$file"
-assert test -f "$DB_DIR/max/users/42/payments/completed/$(basename "$file")"
+assert test -f "$DB_DIR/max/users/42/payments/paid-test/$(basename "$file")"
 assert test -f "$DB_DIR/max/users/42/outbox/$(basename "${file%.json}").txt"
 assert test "$(cat "$DB_DIR/max/users/42/credits_received.txt")" = 5000
 assert grep -q "Твой баланс: 5000 кредитов" "$DB_DIR/max/users/42/outbox/$(basename "${file%.json}").txt"

@@ -9,7 +9,7 @@ log() { printf '[%s] [%s] %s\n' "$(date -u +%FT%TZ)" "$SCRIPT_NAME" "$*" >&2; }
 main() {
   [[ $# -eq 0 ]] || return 2
   [[ -d "$DB_DIR" ]] || return 0
-  local file parent uid_dir id result status credits rub previous spent balance tmp message
+  local file parent uid_dir id result status credits rub previous spent balance tmp message paid_dir
   while IFS= read -r -d '' file; do
     parent="${file%/processing/*}"
     uid_dir="${parent%/payments}"
@@ -32,8 +32,12 @@ main() {
       tmp=$(mktemp "$uid_dir/.received.XXXXXX")
       printf '%s\n' "$((previous + credits))" >"$tmp"
       mv -f "$tmp" "$uid_dir/credits_received.txt" || return 73
-      mkdir -p "$parent/completed" "$uid_dir/outbox"
-      mv -f -- "$file" "$parent/completed/$id.json"
+      paid_dir=paid
+      if [[ $(jq -r '.yookassa.test' "$file") == true ]]; then
+        paid_dir=paid-test
+      fi
+      mkdir -p "$parent/$paid_dir" "$uid_dir/outbox"
+      mv -f -- "$file" "$parent/$paid_dir/$id.json"
       spent=0
       [[ ! -f "$uid_dir/credits_spent.txt" ]] || spent=$(<"$uid_dir/credits_spent.txt")
       balance=$(jq -nr --arg received "$((previous + credits))" --arg spent "$spent" '($received | tonumber) - ($spent | tonumber)')

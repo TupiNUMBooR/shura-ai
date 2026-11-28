@@ -1,7 +1,7 @@
 # ms-yookassa/Dockerfile
 FROM alpine:3.24
 
-RUN apk add --no-cache bash curl jq ca-certificates findutils
+RUN apk add --no-cache bash curl jq ca-certificates findutils coreutils
 
 COPY . /repo/
 
